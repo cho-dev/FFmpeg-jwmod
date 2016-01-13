@@ -3527,8 +3527,12 @@ static void event_loop(VideoState *cur_stream)
                     av_log(NULL, AV_LOG_FATAL, "Failed to set video mode\n");
                     do_exit(cur_stream);
                 }
-                screen_width  = cur_stream->width  = screen->w;
-                screen_height = cur_stream->height = screen->h;
+                cur_stream->width  = screen->w;
+                cur_stream->height = screen->h;
+                if (!is_full_screen) {   // keep previous screen size when get fullscreen mode.
+                    screen_width  = screen->w;
+                    screen_height = screen->h;
+                }
                 cur_stream->force_refresh = 1;
             break;
         case SDL_QUIT:
