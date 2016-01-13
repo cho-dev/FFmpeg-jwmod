@@ -132,6 +132,43 @@ static int file_check(URLContext *h, int mask)
     const char *filename = h->filename;
     av_strstart(filename, "file:", &filename);
 
+// for Windows: use _waccess(wchar_t filename, int mode) to fix specific
+//              char code environment problem.  eg. Japanese cp932.
+#if defined(_WIN32) && !defined(__MINGW32CE__)
+#include "libavutil/wchar_filename.h"
+
+    {
+        wchar_t *filename_w;
+        
+        if (utf8towchar(filename, &filename_w))
+            return AVERROR(errno);
+        
+        if (filename_w) {
+            if (_waccess(filename_w, F_OK) < 0) {
+                av_freep(&filename_w);
+                return AVERROR(errno);
+            }
+            if (mask&AVIO_FLAG_READ)
+                if (_waccess(filename_w, R_OK) >= 0)
+                    ret |= AVIO_FLAG_READ;
+            if (mask&AVIO_FLAG_WRITE)
+                if (_waccess(filename_w, W_OK) >= 0)
+                    ret |= AVIO_FLAG_WRITE;
+            av_freep(&filename_w);
+        } else {   // fallback  (referred to: libavutil/file_open.c)
+            if (access(filename, F_OK) < 0)
+                return AVERROR(errno);
+            if (mask&AVIO_FLAG_READ)
+                if (access(filename, R_OK) >= 0)
+                    ret |= AVIO_FLAG_READ;
+            if (mask&AVIO_FLAG_WRITE)
+                if (access(filename, W_OK) >= 0)
+                    ret |= AVIO_FLAG_WRITE;
+        }
+    }
+
+#else
+
     {
 #if HAVE_ACCESS && defined(R_OK)
     if (access(filename, F_OK) < 0)
@@ -152,6 +189,9 @@ static int file_check(URLContext *h, int mask)
     ret |= st.st_mode&S_IWUSR ? mask&AVIO_FLAG_WRITE : 0;
 #endif
     }
+
+#endif
+
     return ret;
 }
 
