@@ -48,6 +48,7 @@
 #include "libswresample/swresample.h"
 #include "libpostproc/postprocess.h"
 #include "cmdutils.h"
+#include "libavutil/charcode.h"
 
 const char program_name[] = "ffprobe";
 const int program_birth_year = 2007;
@@ -884,7 +885,19 @@ static void default_print_str(WriterContext *wctx, const char *key, const char *
 
     if (!def->nokey)
         printf("%s%s=", wctx->section_pbuf[wctx->level].str, key);
-    printf("%s\n", value);
+    // printf("%s\n", value);
+    
+    {  // print with sjis(CP932) encode.
+        char *str_sjis;
+        
+        charcode_convert( &str_sjis, value, "CP932", "UTF-8");
+        if (str_sjis) {
+            printf("%s\n", str_sjis);
+            av_free(str_sjis);
+        } else {
+            printf("%s\n", value);
+        }
+    }
 }
 
 static void default_print_int(WriterContext *wctx, const char *key, long long int value)
