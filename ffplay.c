@@ -46,6 +46,7 @@
 #include "libavutil/opt.h"
 #include "libavcodec/avfft.h"
 #include "libswresample/swresample.h"
+#include "libavutil/charcode.h"
 
 #if CONFIG_AVFILTER
 # include "libavfilter/avfilter.h"
@@ -2904,8 +2905,16 @@ static int read_thread(void *arg)
 
     is->max_frame_duration = (ic->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0;
 
-    if (!window_title && (t = av_dict_get(ic->metadata, "title", NULL, 0)))
-        window_title = av_asprintf("%s - %s", t->value, input_filename);
+    if (!window_title && (t = av_dict_get(ic->metadata, "title", NULL, 0))) {
+        char *cfname;
+        charcode_convert(&cfname, t->value, "UTF-8", "CP932");   // add char code check for Japanese.
+        if (cfname) {
+            window_title = av_asprintf("%s - %s", cfname, input_filename);
+            av_free(cfname);
+        } else {
+            window_title = av_asprintf("%s - %s", t->value, input_filename);
+        }
+    }
 
     /* if seeking requested, we execute it */
     if (start_time != AV_NOPTS_VALUE) {
