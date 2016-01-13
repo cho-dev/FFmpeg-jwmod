@@ -39,6 +39,7 @@
 #include "common.h"
 #include "internal.h"
 #include "log.h"
+#include "charcode.h"
 
 #if HAVE_PTHREADS
 #include <pthread.h>
@@ -274,6 +275,23 @@ static void format_line(void *avcl, int level, const char *fmt, va_list vl,
     }
 
     av_vbprintf(part+3, fmt, vl);
+
+    { // convert char code of 'part+3' UTF-8 to CP932
+        char *str_cp932;
+        int  ret;
+        
+        ret = charcode_convert( &str_cp932, part[3].str, "CP932", "UTF-8");
+        if (str_cp932) {
+            av_bprint_finalize(part+3, NULL);
+            av_bprint_init(part+3, 0, 65536);
+            if (!ret)
+                av_bprintf(part+3, "%s", str_cp932);     // successful.
+            else
+                av_bprintf(part+3, "(?)%s", str_cp932);  // failed.  add prefix '(?)'
+            
+            av_free(str_cp932);
+        }
+    }
 
     if(*part[0].str || *part[1].str || *part[2].str || *part[3].str) {
         char lastc = part[3].len && part[3].len <= part[3].size ? part[3].str[part[3].len - 1] : 0;
