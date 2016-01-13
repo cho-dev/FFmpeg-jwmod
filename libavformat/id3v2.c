@@ -39,6 +39,7 @@
 #include "internal.h"
 #include "id3v1.h"
 #include "id3v2.h"
+#include "libavutil/charcode.h"
 
 const AVMetadataConv ff_id3v2_34_metadata_conv[] = {
     { "TALB", "album"        },
@@ -255,11 +256,53 @@ static int decode_str(AVFormatContext *s, AVIOContext *pb, int encoding,
 
     switch (encoding) {
     case ID3v2_ENCODING_ISO8859:
+/* // original code
         while (left && ch) {
             ch = avio_r8(pb);
             PUT_UTF8(ch, tmp, avio_w8(dynbuf, tmp);)
             left--;
         }
+*/
+// start of modification ------------------------------------------
+        { // fix Windows mp3 (ISO8859 flag) && (cp932) tag
+            char *str_cp932, *str_utf8;
+            char *p;
+            
+            str_cp932 = av_malloc(left + 1);
+            if (!str_cp932) {
+                while (left && ch) {
+                    ch = avio_r8(pb);
+                    PUT_UTF8(ch, tmp, avio_w8(dynbuf, tmp);)
+                    left--;
+                }
+                break;
+            }
+            
+            p = str_cp932;
+            while (left && ch) {
+                ch = avio_r8(pb);
+                *p = ch;
+                p++;
+                left--;
+            }
+            *p = 0;
+            
+            charcode_convert(&str_utf8, str_cp932, "UTF-8", "CP932");
+            if (str_utf8)
+                p = str_utf8;
+            else
+                p = str_cp932;
+            
+            do {
+                avio_w8(dynbuf, *p);
+                p++;
+            } while (*(p - 1));
+            
+            if (str_utf8)  av_free(str_utf8);
+            if (str_cp932) av_free(str_cp932);
+        }
+// end of modification ------------------------------------------
+
         break;
 
     case ID3v2_ENCODING_UTF16BOM:
