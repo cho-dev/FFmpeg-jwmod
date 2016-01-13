@@ -41,6 +41,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/time_internal.h"
+#include "libavutil/charcode.h"
 
 #define DEFAULT_PASS_LOGFILENAME_PREFIX "ffmpeg2pass"
 
@@ -792,16 +793,32 @@ static void add_input_streams(OptionsContext *o, AVFormatContext *ic)
 
 static void assert_file_overwrite(const char *filename)
 {
+    char filename_sjis[512];
+    
     if (file_overwrite && no_file_overwrite) {
         fprintf(stderr, "Error, both -y and -n supplied. Exiting.\n");
         exit_program(1);
     }
-
+    
+    {  // make sjis(CP932) filename
+        char *str_sjis;
+        
+        charcode_convert( &str_sjis, filename, "CP932", "UTF-8");
+        if (str_sjis) {
+            snprintf(filename_sjis, sizeof(filename_sjis) - 1, "%s", str_sjis);
+            filename_sjis[sizeof(filename_sjis) - 1] = 0;
+            av_free(str_sjis);
+        } else {
+            snprintf(filename_sjis, sizeof(filename_sjis) - 1, "%s", filename);  // fallback.
+            filename_sjis[sizeof(filename_sjis) - 1] = 0;
+        }
+    }
+    
     if (!file_overwrite) {
         const char *proto_name = avio_find_protocol_name(filename);
         if (proto_name && !strcmp(proto_name, "file") && avio_check(filename, 0) == 0) {
             if (stdin_interaction && !no_file_overwrite) {
-                fprintf(stderr,"File '%s' already exists. Overwrite ? [y/N] ", filename);
+                fprintf(stderr,"File '%s' already exists. Overwrite ? [y/N] ", filename_sjis);
                 fflush(stderr);
                 term_exit();
                 signal(SIGINT, SIG_DFL);
