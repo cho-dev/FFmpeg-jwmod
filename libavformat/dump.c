@@ -31,6 +31,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/replaygain.h"
 #include "libavutil/stereo3d.h"
+#include "libavutil/charcode.h"
 
 #include "avformat.h"
 
@@ -133,6 +134,29 @@ static void dump_metadata(void *ctx, AVDictionary *m, const char *indent)
     if (m && !(av_dict_count(m) == 1 && av_dict_get(m, "language", NULL, 0))) {
         AVDictionaryEntry *tag = NULL;
 
+        {  // fix charcode in metadata string for CP932. modified by Coffey 20150117 (experimental) ===========
+            AVDictionaryEntry *t = NULL;
+            char *outstr;
+            int ret;
+            
+            while ((t = av_dict_get(m, "", t, AV_DICT_IGNORE_SUFFIX))) {
+                if (strcmp("language", t->key)) {
+                    if (charcode_convert(&outstr, t->value, "UTF-8", "UTF-8")) {  // if not UTF-8
+                        if (outstr)
+                            av_free(outstr);
+                        ret = charcode_convert(&outstr, t->value, "UTF-8", "CP932");
+                        if (!ret && outstr) {
+                            av_dict_set(&m, t->key, outstr, 0);
+                        }
+                        if (outstr)
+                            av_free(outstr);
+                    }
+                }
+            }
+            // while ((t = av_dict_get(m, "", t, AV_DICT_IGNORE_SUFFIX)))
+            //     printf("%s %s\n", t->key, t->value);
+        }
+        
         av_log(ctx, AV_LOG_INFO, "%sMetadata:\n", indent);
         while ((tag = av_dict_get(m, "", tag, AV_DICT_IGNORE_SUFFIX)))
             if (strcmp("language", tag->key)) {
@@ -140,7 +164,7 @@ static void dump_metadata(void *ctx, AVDictionary *m, const char *indent)
                 av_log(ctx, AV_LOG_INFO,
                        "%s  %-16s: ", indent, tag->key);
                 while (*p) {
-                    char tmp[256];
+                    char tmp[1024];  // modified: 256 -> 1024  to show long tag value
                     size_t len = strcspn(p, "\x8\xa\xb\xc\xd");
                     av_strlcpy(tmp, p, FFMIN(sizeof(tmp), len+1));
                     av_log(ctx, AV_LOG_INFO, "%s", tmp);
