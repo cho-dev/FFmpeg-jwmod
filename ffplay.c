@@ -3351,11 +3351,39 @@ static void seek_chapter(VideoState *is, int incr)
                                  AV_TIME_BASE_Q), 0, 0);
 }
 
+static void do_seek(VideoState *cur_stream, double incr)
+{
+    double pos;
+    
+    if (seek_by_bytes) {
+        pos = -1;
+        if (pos < 0 && cur_stream->video_stream >= 0)
+            pos = frame_queue_last_pos(&cur_stream->pictq);
+        if (pos < 0 && cur_stream->audio_stream >= 0)
+            pos = frame_queue_last_pos(&cur_stream->sampq);
+        if (pos < 0)
+            pos = avio_tell(cur_stream->ic->pb);
+        if (cur_stream->ic->bit_rate)
+            incr *= cur_stream->ic->bit_rate / 8.0;
+        else
+            incr *= 180000.0;
+        pos += incr;
+        stream_seek(cur_stream, pos, incr, 1);
+    } else {
+        pos = get_master_clock(cur_stream);
+        if (isnan(pos))
+            pos = (double)cur_stream->seek_pos / AV_TIME_BASE;
+        pos += incr;
+        if (cur_stream->ic->start_time != AV_NOPTS_VALUE && pos < cur_stream->ic->start_time / (double)AV_TIME_BASE)
+            pos = cur_stream->ic->start_time / (double)AV_TIME_BASE;
+        stream_seek(cur_stream, (int64_t)(pos * AV_TIME_BASE), (int64_t)(incr * AV_TIME_BASE), 0);
+    }
+}
+
 /* handle an event sent by the GUI */
 static void event_loop(VideoState *cur_stream)
 {
     SDL_Event event;
-    double incr, pos, frac;
 
     for (;;) {
         double x;
@@ -3422,53 +3450,29 @@ static void event_loop(VideoState *cur_stream)
                 break;
             case SDLK_PAGEUP:
                 if (cur_stream->ic->nb_chapters <= 1) {
-                    incr = 600.0;
-                    goto do_seek;
+                    do_seek(cur_stream, 600.0);
+                } else {
+                    seek_chapter(cur_stream, 1);
                 }
-                seek_chapter(cur_stream, 1);
                 break;
             case SDLK_PAGEDOWN:
                 if (cur_stream->ic->nb_chapters <= 1) {
-                    incr = -600.0;
-                    goto do_seek;
+                    do_seek(cur_stream, -600.0);
+                } else {
+                    seek_chapter(cur_stream, -1);
                 }
-                seek_chapter(cur_stream, -1);
                 break;
             case SDLK_LEFT:
-                incr = -10.0;
-                goto do_seek;
+                do_seek(cur_stream, -10.0);
+                break;
             case SDLK_RIGHT:
-                incr = 10.0;
-                goto do_seek;
+                do_seek(cur_stream, 10.0);
+                break;
             case SDLK_UP:
-                incr = 60.0;
-                goto do_seek;
+                do_seek(cur_stream, 60.0);
+                break;
             case SDLK_DOWN:
-                incr = -60.0;
-            do_seek:
-                    if (seek_by_bytes) {
-                        pos = -1;
-                        if (pos < 0 && cur_stream->video_stream >= 0)
-                            pos = frame_queue_last_pos(&cur_stream->pictq);
-                        if (pos < 0 && cur_stream->audio_stream >= 0)
-                            pos = frame_queue_last_pos(&cur_stream->sampq);
-                        if (pos < 0)
-                            pos = avio_tell(cur_stream->ic->pb);
-                        if (cur_stream->ic->bit_rate)
-                            incr *= cur_stream->ic->bit_rate / 8.0;
-                        else
-                            incr *= 180000.0;
-                        pos += incr;
-                        stream_seek(cur_stream, pos, incr, 1);
-                    } else {
-                        pos = get_master_clock(cur_stream);
-                        if (isnan(pos))
-                            pos = (double)cur_stream->seek_pos / AV_TIME_BASE;
-                        pos += incr;
-                        if (cur_stream->ic->start_time != AV_NOPTS_VALUE && pos < cur_stream->ic->start_time / (double)AV_TIME_BASE)
-                            pos = cur_stream->ic->start_time / (double)AV_TIME_BASE;
-                        stream_seek(cur_stream, (int64_t)(pos * AV_TIME_BASE), (int64_t)(incr * AV_TIME_BASE), 0);
-                    }
+                do_seek(cur_stream, -60.0);
                 break;
             default:
                 break;
@@ -3502,6 +3506,7 @@ static void event_loop(VideoState *cur_stream)
                     int64_t ts;
                     int ns, hh, mm, ss;
                     int tns, thh, tmm, tss;
+                    double frac;
                     tns  = cur_stream->ic->duration / 1000000LL;
                     thh  = tns / 3600;
                     tmm  = (tns % 3600) / 60;
