@@ -61,6 +61,11 @@
 
 #include <assert.h>
 
+// use win32 api for Windows
+#if defined(_WIN32) && !defined(__MINGW32CE__)
+#include <windows.h>
+#endif
+
 const char program_name[] = "ffplay";
 const int program_birth_year = 2003;
 
@@ -3384,9 +3389,17 @@ static void do_seek(VideoState *cur_stream, double incr)
 static void event_loop(VideoState *cur_stream)
 {
     SDL_Event event;
+    uint64_t last_click_left = 0;   // add last pressed left button (unit: ms)
+    uint64_t double_click_time;     // add double click interval time (unit: ms)
+
+// windows: get double click time from system
+#if defined(_WIN32) && !defined(__MINGW32CE__)
+    double_click_time = GetDoubleClickTime();
+#else
+    double_click_time = 500;   // set double click interval to 500ms
+#endif
 
     for (;;) {
-        double x;
         refresh_loop_wait_event(cur_stream, &event);
         switch (event.type) {
         case SDL_KEYDOWN:
@@ -3448,6 +3461,15 @@ static void event_loop(VideoState *cur_stream)
                 toggle_audio_display(cur_stream);
 #endif
                 break;
+            case SDLK_l:
+                if (loop == 1) {
+                    loop = 0;
+                    av_log(NULL, AV_LOG_INFO, "\nSet loop forever.\n");
+                } else {
+                    loop = 1;
+                    av_log(NULL, AV_LOG_INFO, "\nSet no loop.\n");
+                }
+                break;
             case SDLK_PAGEUP:
                 if (cur_stream->ic->nb_chapters <= 1) {
                     do_seek(cur_stream, 600.0);
@@ -3463,10 +3485,18 @@ static void event_loop(VideoState *cur_stream)
                 }
                 break;
             case SDLK_LEFT:
-                do_seek(cur_stream, -10.0);
+                if ((event.key.keysym.mod == KMOD_LCTRL) || (event.key.keysym.mod == KMOD_RCTRL)) {
+                    do_seek(cur_stream, -3.0);
+                } else {
+                    do_seek(cur_stream, -10.0);
+                }
                 break;
             case SDLK_RIGHT:
-                do_seek(cur_stream, 10.0);
+                if ((event.key.keysym.mod == KMOD_LCTRL) || (event.key.keysym.mod == KMOD_RCTRL)) {
+                    do_seek(cur_stream, 3.0);
+                } else {
+                    do_seek(cur_stream, 10.0);
+                }
                 break;
             case SDLK_UP:
                 do_seek(cur_stream, 60.0);
@@ -3486,44 +3516,79 @@ static void event_loop(VideoState *cur_stream)
                 do_exit(cur_stream);
                 break;
             }
+            if (event.button.state == SDL_PRESSED) {
+                switch(event.button.button) {
+                case SDL_BUTTON_WHEELUP:
+                    if (cur_stream->paused) {
+                        step_to_next_frame(cur_stream);
+                    }
+                    break;
+                case SDL_BUTTON_WHEELDOWN:
+                    if (cur_stream->paused) {
+                        // action when paused
+                    }
+                    break;
+                case SDL_BUTTON_MIDDLE:
+                    toggle_pause(cur_stream);
+                    break;
+                case SDL_BUTTON_X1:      // backward button
+                    do_seek(cur_stream, -5.0);
+                    break;
+                case SDL_BUTTON_X2:      // forward button
+                    do_seek(cur_stream, 10.0);
+                    break;
+                case SDL_BUTTON_RIGHT:
+                    {
+                        double x;
+                        
+                        x = event.button.x;
+                        if (seek_by_bytes || cur_stream->ic->duration <= 0) {
+                            uint64_t size =  avio_size(cur_stream->ic->pb);
+                            stream_seek(cur_stream, size * x / cur_stream->width, 0, 1);
+                        } else {
+                            int64_t ts;
+                            int ns, hh, mm, ss;
+                            int tns, thh, tmm, tss;
+                            double frac;
+                            
+                            tns  = cur_stream->ic->duration / 1000000LL;
+                            thh  = tns / 3600;
+                            tmm  = (tns % 3600) / 60;
+                            tss  = (tns % 60);
+                            frac = x / cur_stream->width;
+                            ns   = frac * tns;
+                            hh   = ns / 3600;
+                            mm   = (ns % 3600) / 60;
+                            ss   = (ns % 60);
+                            av_log(NULL, AV_LOG_INFO,
+                                   "Seek to %2.0f%% (%2d:%02d:%02d) of total duration (%2d:%02d:%02d)       \n", frac*100,
+                                    hh, mm, ss, thh, tmm, tss);
+                            ts = frac * cur_stream->ic->duration;
+                            if (cur_stream->ic->start_time != AV_NOPTS_VALUE)
+                                ts += cur_stream->ic->start_time;
+                            stream_seek(cur_stream, ts, 0, 0);
+                        }
+                    }
+                    break;
+                case SDL_BUTTON_LEFT:
+                    if (SDL_GetTicks() - last_click_left < double_click_time) {  // double click then toggle full screen. modified by coffey 20150104
+                        toggle_full_screen(cur_stream);
+                        cur_stream->force_refresh = 1;
+                        last_click_left = 0;
+                    } else {
+                        last_click_left = SDL_GetTicks();
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
         case SDL_MOUSEMOTION:
             if (cursor_hidden) {
                 SDL_ShowCursor(1);
                 cursor_hidden = 0;
             }
             cursor_last_shown = av_gettime_relative();
-            if (event.type == SDL_MOUSEBUTTONDOWN) {
-                x = event.button.x;
-            } else {
-                if (event.motion.state != SDL_PRESSED)
-                    break;
-                x = event.motion.x;
-            }
-                if (seek_by_bytes || cur_stream->ic->duration <= 0) {
-                    uint64_t size =  avio_size(cur_stream->ic->pb);
-                    stream_seek(cur_stream, size*x/cur_stream->width, 0, 1);
-                } else {
-                    int64_t ts;
-                    int ns, hh, mm, ss;
-                    int tns, thh, tmm, tss;
-                    double frac;
-                    tns  = cur_stream->ic->duration / 1000000LL;
-                    thh  = tns / 3600;
-                    tmm  = (tns % 3600) / 60;
-                    tss  = (tns % 60);
-                    frac = x / cur_stream->width;
-                    ns   = frac * tns;
-                    hh   = ns / 3600;
-                    mm   = (ns % 3600) / 60;
-                    ss   = (ns % 60);
-                    av_log(NULL, AV_LOG_INFO,
-                           "Seek to %2.0f%% (%2d:%02d:%02d) of total duration (%2d:%02d:%02d)       \n", frac*100,
-                            hh, mm, ss, thh, tmm, tss);
-                    ts = frac * cur_stream->ic->duration;
-                    if (cur_stream->ic->start_time != AV_NOPTS_VALUE)
-                        ts += cur_stream->ic->start_time;
-                    stream_seek(cur_stream, ts, 0, 0);
-                }
             break;
         case SDL_VIDEORESIZE:
                 screen = SDL_SetVideoMode(FFMIN(16383, event.resize.w), event.resize.h, 0,
