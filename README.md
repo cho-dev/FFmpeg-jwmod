@@ -4,7 +4,7 @@ FFmpeg-jwmod README
 This repository is forked from https://github.com/FFmpeg/FFmpeg 
 (mirror of git://source.ffmpeg.org/ffmpeg.git)
 
-This ffmpeg is modified for Japanese Windows.
+This FFmpeg is modified for Japanese Windows. (also usable other language)
 
 * for cp932 console (correct character code put to console)
 * convert cp932 tags to UTF-8
@@ -12,11 +12,9 @@ This ffmpeg is modified for Japanese Windows.
 * add some video filters
 * various bug fix
 
-These function is not here yet.
-Wait for bit until applying all my local changes.
 
 
-following README is original ffmpeg readme
+Following README is FFmpeg original.
 
 FFmpeg README
 =============
