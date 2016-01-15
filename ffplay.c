@@ -31,6 +31,7 @@
 #include <stdint.h>
 
 #include "libavutil/avstring.h"
+#include "libavutil/colorspace.h"
 #include "libavutil/eval.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/pixdesc.h"
@@ -80,7 +81,8 @@ const int program_birth_year = 2003;
 #define SDL_AUDIO_MAX_CALLBACKS_PER_SEC 30
 
 /* Step size for volume control */
-#define SDL_VOLUME_STEP (SDL_MIX_MAXVOLUME / 50)
+// #define SDL_VOLUME_STEP (SDL_MIX_MAXVOLUME / 50)
+#define SDL_VOLUME_STEP   5
 
 /* no AV sync correction is done if below the minimum AV sync threshold */
 #define AV_SYNC_THRESHOLD_MIN 0.04
@@ -109,7 +111,8 @@ const int program_birth_year = 2003;
 /* TODO: We assume that a decoded and resampled frame fits into this buffer */
 #define SAMPLE_ARRAY_SIZE (8 * 65536)
 
-#define CURSOR_HIDE_DELAY 1000000
+#define CURSOR_HIDE_DELAY 1500000
+#define OSD_HIDE_DELAY    1500000
 
 static unsigned sws_flags = SWS_BICUBIC;
 
@@ -369,6 +372,26 @@ static AVPacket flush_pkt;
 #define FF_QUIT_EVENT    (SDL_USEREVENT + 2)
 
 static SDL_Surface *screen;
+
+static int osd = 1;           // show osd. 1:osd on, 0:osd off. modified by Coffey 20150109
+static int autoscale = 1;     // auto scaling to window size to avoid jaggy. modified by Coffey 20150121
+
+#define OSD_POSITION_BAR_HEIGHT  32
+
+volatile static struct osdstats {
+    SDL_mutex *mutex;           // osd mutex. modified by Coffey 20150107
+    int vfilt_update;           // video filter update flag. modified by Coffey 20150107
+    int afilt_update;           // audio filter update flag. modified by Coffey 20150107
+    int show_volume;            // volume osd flag. modified by Coffey 20150107
+    int64_t last_shown_volume;  // last sohwn volume osd. modified by Coffey 20150107
+    int show_pos;               // pos osd flag. modified by Coffey 20150107
+    int64_t last_shown_pos;     // last shown pos osd. modified by Coffey 20150107
+    int output_volume;          // volume. (100 = 0dB) modified by Coffey 20150104
+    int width;
+    int height;
+    int fitted_width;
+    int fitted_height;
+} osdstats = {NULL, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0};
 
 #if CONFIG_AVFILTER
 static int opt_add_vfilter(void *optctx, const char *opt, const char *arg)
@@ -946,6 +969,213 @@ static void calculate_display_rect(SDL_Rect *rect,
     rect->h = FFMAX(height, 1);
 }
 
+// draw rectangle on yuv pixel plane. for OSD.
+//     format must be YV12 Planar
+//     modified by Coffey 20150115
+//     *vp=Frame pointer, x=x pos, y=y pos, w=width, h=height, color=32bit color
+// --------------------------------------------------------
+static void osd_fillrect(Frame *vp, int x, int y, int w, int h, uint32_t color)
+{
+    uint8_t color_r, color_g, color_b, color_a;
+    uint8_t color_y, color_cb, color_cr;
+    uint8_t *data_y, *data_cb, *data_cr;
+    int     linesize_y, linesize_cb, linesize_cr;
+
+    // convert rgb to yuv (color = 0xAARRGGBB)
+    color_a = (color >> 24) & 0xff;
+    color_r = (color >> 16) & 0xff;
+    color_g = (color >> 8) & 0xff;
+    color_b = color & 0xff;
+    color_y  = RGB_TO_Y_CCIR(color_r, color_g, color_b);
+    color_cb = RGB_TO_U_CCIR(color_r, color_g, color_b, 0);
+    color_cr = RGB_TO_V_CCIR(color_r, color_g, color_b, 0);
+
+    // check input value
+    if (!vp) return;
+    if (vp->bmp->format != SDL_YV12_OVERLAY) return;
+    x = av_clip(x, 0, vp->bmp->w-1);
+    y = av_clip(y, 0, vp->bmp->h-1);
+    w = av_clip(w, 0, vp->bmp->w-x);
+    h = av_clip(h, 0, vp->bmp->h-y);
+    if (!w || !h ) return ;
+
+    SDL_LockYUVOverlay (vp->bmp);
+    
+    // draw fillbox to yuv plane
+    data_y  = vp->bmp->pixels[0];
+    data_cb = vp->bmp->pixels[2];
+    data_cr = vp->bmp->pixels[1];
+    
+    linesize_y  = vp->bmp->pitches[0];
+    linesize_cb = vp->bmp->pitches[2];
+    linesize_cr = vp->bmp->pitches[1];
+
+    // draw luminance plane
+    if (data_y && linesize_y) {
+        uint8_t *pixel;
+        pixel = data_y + linesize_y * y;
+        if (color_a == 255) {
+            for ( int py = y; py < y+h; py++ ) {
+                for ( int px = x; px < x+w; px++ )
+                    *(pixel + px) = color_y;
+                pixel += linesize_y;
+            }
+        } else {
+            for ( int py = y; py < y+h; py++ ) {
+                for ( int px = x; px < x+w; px++ )
+                    *(pixel + px) = (color_y * color_a + *(pixel + px) * ( 255 - color_a ) + 128) / 255;
+                pixel += linesize_y;
+            }
+        }
+    }
+    // draw chroma cb plane
+    if (data_cb && linesize_cb) {
+        uint8_t *pixel;
+        pixel = data_cb + linesize_cb * (y/2);
+        if (color_a == 255) {
+            for ( int py = y/2; py < (y+h+1)/2; py++ ) {
+                for ( int px = x/2; px < (x+w+1)/2; px++ )
+                    *(pixel + px) = color_cb;
+                pixel += linesize_cb;
+            }
+        } else {
+            for ( int py = y/2; py < (y+h+1)/2; py++ ) {
+                for ( int px = x/2; px < (x+w+1)/2; px++ )
+                    *(pixel + px) = (color_cb * color_a + *(pixel + px) * ( 255 - color_a ) + 128) / 255;
+                pixel += linesize_cb;
+            }
+        }
+    }
+    // draw chroma cr plane
+    if (data_cr && linesize_cr) {
+        uint8_t *pixel;
+        pixel = data_cr + linesize_cr * (y/2);
+        if (color_a == 255) {
+            for ( int py = y/2; py < (y+h+1)/2; py++ ) {
+                for ( int px = x/2; px < (x+w+1)/2; px++ )
+                    *(pixel + px) = color_cr;
+                pixel += linesize_cr;
+            }
+        } else {
+            for ( int py = y/2; py < (y+h+1)/2; py++ ) {
+                for ( int px = x/2; px < (x+w+1)/2; px++ )
+                    *(pixel + px) = (color_cr * color_a + *(pixel + px) * ( 255 - color_a ) + 128) / 255;
+                pixel += linesize_cr;
+            }
+        }
+    }
+    
+    SDL_UnlockYUVOverlay (vp->bmp);
+}
+
+// draw rectangle border on yuv pixel plane. use for OSD.
+//     format must be YV12 Planar
+//     if color has medium alpha, set value x, y, w, h, t to even value better 
+//     modified by Coffey 20150121
+//     *vp=Frame pointer, x=x pos, y=y pos, w=width, h=height, t=thickness, color=32bit color
+// --------------------------------------------------------
+static void osd_borderrect(Frame *vp, int x, int y, int w, int h, int t, uint32_t color)
+{
+    if ((t > h/2) || (t > w/2)) {
+        osd_fillrect(vp, x, y, w, h, color);
+    } else {
+        osd_fillrect(vp,     x,     y, w,     t, color);
+        osd_fillrect(vp,     x, y+h-t, w,     t, color);
+        osd_fillrect(vp,     x,   y+t, t, h-t-t, color);
+        osd_fillrect(vp, x+w-t,   y+t, t, h-t-t, color);
+    }
+}
+
+// draw OSD
+// pixel data must be locked before call this.
+//     modified by Coffey. 20150115
+// --------------------------------------------------------
+static void draw_osd(VideoState *is, Frame *vp)
+{
+    int show_pos, show_volume;
+    int output_volume;
+    int w, h;
+    
+    // pull data
+    SDL_mutexP(osdstats.mutex);
+    show_pos = osdstats.show_pos;
+    show_volume = osdstats.show_volume;
+    output_volume = osdstats.output_volume;
+    SDL_mutexV(osdstats.mutex);
+    
+    w = vp->bmp->w;
+    h = vp->bmp->h;
+    
+    // position OSD
+    if (show_pos && (h > 40)) {
+        double frac;
+        int64_t filesize, filepos, start_time;
+        uint32_t c_green = 0xff00ff00;
+        int bh = OSD_POSITION_BAR_HEIGHT;
+        int bt = 2;
+        static int64_t filepos_prev = 0;
+        
+        if (seek_by_bytes || is->ic->duration <= 0) {  // by byte
+            filesize = avio_size(is->ic->pb);
+            filepos  = vp->pos;
+            if (filepos < 0) {  // if filepos is invalid, use previous filepos. modified by Coffey 20150121
+                filepos = filepos_prev;
+            } else {
+                filepos_prev = filepos;
+            }
+            if (filesize > 0 && filepos > 0) {
+                // draw border
+                osd_borderrect(vp, 0, h-bh, w, bh, bt, c_green);
+                frac = (double)filepos / filesize;
+                if (frac < 0) frac = 0;
+                if (frac > 1) frac = 1;
+                // draw bar
+                osd_fillrect(vp, bt, h-bh+bt, (w-bt-bt)*frac, bh-bt-bt, c_green);
+             }
+        } else if ((is->ic->duration != AV_NOPTS_VALUE) && (is->ic->duration > 0)) {  // by time
+            start_time = is->ic->start_time != AV_NOPTS_VALUE ? is->ic->start_time : 0;
+            // draw border
+            osd_borderrect(vp, 0, h-bh, w, bh, bt, c_green);
+            frac = (vp->pts * (double)AV_TIME_BASE - start_time) / is->ic->duration;
+            if (frac < 0) frac = 0;
+            if (frac > 1) frac = 1;
+            // draw bar
+            osd_fillrect(vp, bt, h-bh+bt, (w-bt-bt)*frac, bh-bt-bt, c_green);
+        }
+    }
+    
+    // Volume OSD
+    if (show_volume && (w > 40) && (h > 140)) {
+        int vh;
+        uint32_t c_green  = 0xff00ff00;
+        uint32_t c_yellow = 0xffffdd88;
+        
+        vh = output_volume * 40 / 100;
+        // draw border
+        osd_borderrect(vp, w-32, 8, 24, 124, 2, c_green);
+        // draw volume level
+        if (vh > 40) {  // draw over gain ( > 100% )
+            osd_fillrect(vp, w-30, 122-40+8, 20, 40, c_green);
+            osd_fillrect(vp, w-30, 122-vh+8, 20, vh-40, c_yellow);
+        } else {
+            osd_fillrect(vp, w-30, 122-vh+8, 20, vh, c_green);
+        }
+    }
+    /*
+    {   // test drawing for debug
+        osd_fillrect(vp, 100, 100, 100, 100, 0xffff0000);
+        osd_fillrect(vp, 301, 101, 100, 100, 0xffff0000);
+        osd_fillrect(vp, 101, 301, 100, 100, 0x7fff0000);  // half blend
+        osd_fillrect(vp, 501, 501, 2000, 2000, 0x4400ff00);
+        osd_borderrect(vp, 100, 100, 50, 50, 2, 0x88ff00ff);
+        osd_borderrect(vp, 300, 300, 6, 50, 2, 0x88ff00ff);
+        osd_borderrect(vp, 310, 300, 5, 50, 300, 0x88ff00ff);
+        osd_borderrect(vp, 320, 300, 5, 50, 30, 0x88ff00ff);
+        osd_borderrect(vp, 401, 101, 80, 80, 24, 0xff00ffff);
+    }
+    */
+}
+
 static void video_image_display(VideoState *is)
 {
     Frame *vp;
@@ -982,6 +1212,10 @@ static void video_image_display(VideoState *is)
             }
         }
 
+        if (osd) {  // draw OSD. modified by Coffey. 20150115
+            draw_osd(is, vp);
+        }
+
         calculate_display_rect(&rect, is->xleft, is->ytop, is->width, is->height, vp->width, vp->height, vp->sar);
 
         SDL_DisplayYUVOverlay(vp->bmp, &rect);
@@ -991,6 +1225,18 @@ static void video_image_display(VideoState *is)
             fill_border(is->xleft, is->ytop, is->width, is->height, rect.x, rect.y, rect.w, rect.h, bgcolor, 1);
             is->last_display_rect = rect;
         }
+
+        // set variables. modified by Coffey  20150110
+        SDL_mutexP(osdstats.mutex);
+        if (vp->sar.num) {
+            osdstats.width  = vp->width * vp->sar.num / vp->sar.den;
+        } else {
+            osdstats.width = vp->width;
+        }
+        osdstats.height = vp->height;
+        osdstats.fitted_width  = rect.w;
+        osdstats.fitted_height = rect.h;
+        SDL_mutexV(osdstats.mutex);
     }
 }
 
@@ -1239,6 +1485,7 @@ static void do_exit(VideoState *is)
     if (is) {
         stream_close(is);
     }
+    SDL_DestroyMutex(osdstats.mutex);  // free mutex. modified by Coffey. 20150108
     av_lockmgr_register(NULL);
     uninit_opts();
 #if CONFIG_AVFILTER
@@ -1449,12 +1696,45 @@ static void toggle_pause(VideoState *is)
 
 static void toggle_mute(VideoState *is)
 {
-    is->muted = !is->muted;
+    static int last_output_volume = 100;
+    
+    // is->muted = !is->muted;
+    
+    // mute. modified by Coffey 20150104 ----------------
+    SDL_mutexP(osdstats.mutex);
+    if (osdstats.output_volume) {
+        last_output_volume = osdstats.output_volume;
+        osdstats.output_volume = 0;
+    } else {
+        osdstats.output_volume = last_output_volume;
+    }
+    osdstats.afilt_update = 1;
+    osdstats.show_volume = 1;
+    osdstats.last_shown_volume = av_gettime_relative();
+    SDL_mutexV(osdstats.mutex);
+    // --------------------------------------------------
 }
 
 static void update_volume(VideoState *is, int sign, int step)
 {
-    is->audio_volume = av_clip(is->audio_volume + sign * step, 0, SDL_MIX_MAXVOLUME);
+    // is->audio_volume = av_clip(is->audio_volume + sign * step, 0, SDL_MIX_MAXVOLUME);
+    
+    // volume up/down. modified by Coffey 20150104 -------------
+    if (!is->paused && !is->step) {
+        SDL_mutexP(osdstats.mutex);
+        osdstats.output_volume += (sign * step);
+        if (osdstats.output_volume >= 300) {  // limit max volume (300 = x3)
+            osdstats.output_volume = 300;
+        }
+        if (osdstats.output_volume < 0) {
+            osdstats.output_volume = 0;
+        }
+        osdstats.afilt_update = 1;
+        osdstats.show_volume = 1;
+        osdstats.last_shown_volume = av_gettime_relative();
+        SDL_mutexV(osdstats.mutex);
+    }
+    // ---------------------------------------------------------
 }
 
 static void step_to_next_frame(VideoState *is)
@@ -1974,6 +2254,15 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
      * combinations, therefore we crop the picture to an even width/height. */
     INSERT_FILT("crop", "floor(in_w/2)*2:floor(in_h/2)*2");
 
+    if (autoscale && 1) {  // auto scaling. modified by Coffey 20141231
+        char scalestr[64] = {0};
+        if (is->width && is->height) {
+            snprintf(scalestr, sizeof(scalestr) -1, "min(%d*dar,%d):ow/dar:flags=lanczos", is->height, is->width);
+            INSERT_FILT("scale", scalestr);
+            av_log(NULL, AV_LOG_DEBUG, "\nInsert Auto Scaling to %dx%d\n", is->width, is->height);
+        }
+    }
+
     if (autorotate) {
         double theta  = get_rotation(is->video_st);
 
@@ -2007,10 +2296,11 @@ static int configure_audio_filters(VideoState *is, const char *afilters, int for
     int sample_rates[2] = { 0, -1 };
     int64_t channel_layouts[2] = { 0, -1 };
     int channels[2] = { 0, -1 };
-    AVFilterContext *filt_asrc = NULL, *filt_asink = NULL;
+    AVFilterContext *filt_asrc = NULL, *filt_asink = NULL, *filt_ctx = NULL;  // add filt_ctx. modified by Coffey 20150104
     char aresample_swr_opts[512] = "";
     AVDictionaryEntry *e = NULL;
     char asrc_args[256];
+    char vol_arg[64] = { 0 };   // add volume level string. modified by Coffey 20150104
     int ret;
 
     avfilter_graph_free(&is->agraph);
@@ -2064,9 +2354,19 @@ static int configure_audio_filters(VideoState *is, const char *afilters, int for
             goto end;
     }
 
-
-    if ((ret = configure_filtergraph(is->agraph, afilters, filt_asrc, filt_asink)) < 0)
+    // for volume ------- modified by Coffey 20150104
+    SDL_mutexP(osdstats.mutex);
+    snprintf(vol_arg, sizeof(vol_arg) - 1, "volume=%d.%02d", osdstats.output_volume / 100, osdstats.output_volume % 100);
+    SDL_mutexV(osdstats.mutex);
+    ret = avfilter_graph_create_filter(&filt_ctx, avfilter_get_by_name("volume"), "ffplay_volume", vol_arg, NULL, is->agraph);
+    if (ret < 0)
         goto end;
+    ret = avfilter_link(filt_ctx, 0, filt_asink, 0);
+    if (ret < 0)
+        goto end;
+    if ((ret = configure_filtergraph(is->agraph, afilters, filt_asrc, filt_ctx)) < 0)   // modified by Coffey 20150104
+        goto end;
+    // ------------------------------
 
     is->in_audio_filter  = filt_asrc;
     is->out_audio_filter = filt_asink;
@@ -2087,6 +2387,7 @@ static int audio_thread(void *arg)
     int last_serial = -1;
     int64_t dec_channel_layout;
     int reconfigure;
+    int afilt_update;   // modified by Coffey 20150108
 #endif
     int got_frame = 0;
     AVRational tb;
@@ -2105,12 +2406,21 @@ static int audio_thread(void *arg)
 #if CONFIG_AVFILTER
                 dec_channel_layout = get_valid_channel_layout(frame->channel_layout, av_frame_get_channels(frame));
 
+                // for wheel volume. modified by Coffey 20150104 ---------
+                afilt_update = 0;
+                SDL_mutexP(osdstats.mutex);
+                afilt_update = osdstats.afilt_update;
+                osdstats.afilt_update = 0;
+                SDL_mutexV(osdstats.mutex);
+                // -------------------------------------------------------
+
                 reconfigure =
                     cmp_audio_fmts(is->audio_filter_src.fmt, is->audio_filter_src.channels,
                                    frame->format, av_frame_get_channels(frame))    ||
                     is->audio_filter_src.channel_layout != dec_channel_layout ||
                     is->audio_filter_src.freq           != frame->sample_rate ||
-                    is->auddec.pkt_serial               != last_serial;
+                    is->auddec.pkt_serial               != last_serial ||
+                    afilt_update;                                  // for wheel volume. modified by Coffey 20150104
 
                 if (reconfigure) {
                     char buf1[1024], buf2[1024];
@@ -2194,6 +2504,7 @@ static int video_thread(void *arg)
     enum AVPixelFormat last_format = -2;
     int last_serial = -1;
     int last_vfilter_idx = 0;
+    int vfilt_update;   // modified by Coffey 20150107
     if (!graph) {
         av_frame_free(&frame);
         return AVERROR(ENOMEM);
@@ -2216,11 +2527,21 @@ static int video_thread(void *arg)
             continue;
 
 #if CONFIG_AVFILTER
+
+        // for autoscale. modified by Coffey 20150107 ------------
+        vfilt_update = 0;
+        SDL_mutexP(osdstats.mutex);
+        vfilt_update = osdstats.vfilt_update;
+	    osdstats.vfilt_update = 0;
+        SDL_mutexV(osdstats.mutex);
+        // -------------------------------------------------------
+
         if (   last_w != frame->width
             || last_h != frame->height
             || last_format != frame->format
             || last_serial != is->viddec.pkt_serial
-            || last_vfilter_idx != is->vfilter_idx) {
+            || last_vfilter_idx != is->vfilter_idx
+            || vfilt_update ) {  // modified by Coffey 20150107
             av_log(NULL, AV_LOG_DEBUG,
                    "Video frame changed from size:%dx%d format:%s serial:%d to size:%dx%d format:%s serial:%d\n",
                    last_w, last_h,
@@ -3320,6 +3641,18 @@ static void refresh_loop_wait_event(VideoState *is, SDL_Event *event) {
             SDL_ShowCursor(0);
             cursor_hidden = 1;
         }
+        
+        // volume, position OSD. modified by Coffey 20150108 --------------
+        SDL_mutexP(osdstats.mutex);
+        if (osdstats.show_volume && (av_gettime_relative() - osdstats.last_shown_volume > OSD_HIDE_DELAY)) {
+            osdstats.show_volume = 0;
+        }
+        if (osdstats.show_pos && (av_gettime_relative() - osdstats.last_shown_pos > OSD_HIDE_DELAY)) {
+            osdstats.show_pos = 0;
+        }
+        SDL_mutexV(osdstats.mutex);
+        // ------------------------------------------------------------------
+        
         if (remaining_time > 0.0)
             av_usleep((int64_t)(remaining_time * 1000000.0));
         remaining_time = REFRESH_RATE;
@@ -3420,6 +3753,7 @@ static void event_loop(VideoState *cur_stream)
             case SDLK_SPACE:
                 toggle_pause(cur_stream);
                 break;
+            case SDLK_KP0:
             case SDLK_m:
                 toggle_mute(cur_stream);
                 break;
@@ -3462,12 +3796,12 @@ static void event_loop(VideoState *cur_stream)
 #endif
                 break;
             case SDLK_l:
-                if (loop == 1) {
+                if (loop) {
                     loop = 0;
-                    av_log(NULL, AV_LOG_INFO, "\nSet loop forever.\n");
+                    av_log(NULL, AV_LOG_INFO, "\nSet loop on.\n");
                 } else {
                     loop = 1;
-                    av_log(NULL, AV_LOG_INFO, "\nSet no loop.\n");
+                    av_log(NULL, AV_LOG_INFO, "\nSet loop off.\n");
                 }
                 break;
             case SDLK_PAGEUP:
@@ -3518,23 +3852,27 @@ static void event_loop(VideoState *cur_stream)
             }
             if (event.button.state == SDL_PRESSED) {
                 switch(event.button.button) {
-                case SDL_BUTTON_WHEELUP:
+                case SDL_BUTTON_WHEELUP:    // volume up when playing. step play when pause. modified by Coffey 20150104
                     if (cur_stream->paused) {
                         step_to_next_frame(cur_stream);
+                    } else {
+                        update_volume(cur_stream, 1, SDL_VOLUME_STEP);
                     }
                     break;
-                case SDL_BUTTON_WHEELDOWN:
+                case SDL_BUTTON_WHEELDOWN:   // volume down. modified by Coffey 20150104
                     if (cur_stream->paused) {
                         // action when paused
+                    } else {
+                        update_volume(cur_stream, -1, SDL_VOLUME_STEP);
                     }
                     break;
-                case SDL_BUTTON_MIDDLE:
+                case SDL_BUTTON_MIDDLE:  // wheel button then pause. modified by Coffey 20150104
                     toggle_pause(cur_stream);
                     break;
-                case SDL_BUTTON_X1:      // backward button
+                case SDL_BUTTON_X1:      // backward button (wheel tilt left). modified by Coffey 20150104
                     do_seek(cur_stream, -5.0);
                     break;
-                case SDL_BUTTON_X2:      // forward button
+                case SDL_BUTTON_X2:      // forward button (wheel tilt right). modified by Coffey 20150104
                     do_seek(cur_stream, 10.0);
                     break;
                 case SDL_BUTTON_RIGHT:
@@ -3543,8 +3881,18 @@ static void event_loop(VideoState *cur_stream)
                         
                         x = event.button.x;
                         if (seek_by_bytes || cur_stream->ic->duration <= 0) {
-                            uint64_t size =  avio_size(cur_stream->ic->pb);
-                            stream_seek(cur_stream, size * x / cur_stream->width, 0, 1);
+                            double frac;
+                            uint64_t size;
+                            
+                            size = avio_size(cur_stream->ic->pb);
+                            if (cur_stream->show_mode == SHOW_MODE_VIDEO ) {
+                                frac = (x - cur_stream->last_display_rect.x) / cur_stream->last_display_rect.w;
+                            } else {
+                                frac = x / cur_stream->width;
+                            }
+                            if (frac < 0) frac = 0;
+                            if (frac > 1) frac = 1;
+                            stream_seek(cur_stream, (uint64_t)(size * frac), 0, 1);
                         } else {
                             int64_t ts;
                             int ns, hh, mm, ss;
@@ -3555,7 +3903,13 @@ static void event_loop(VideoState *cur_stream)
                             thh  = tns / 3600;
                             tmm  = (tns % 3600) / 60;
                             tss  = (tns % 60);
-                            frac = x / cur_stream->width;
+                            if (cur_stream->show_mode == SHOW_MODE_VIDEO ) {
+                                frac = (x - cur_stream->last_display_rect.x) / cur_stream->last_display_rect.w;
+                            } else {
+                                frac = x / cur_stream->width;
+                            }
+                            if (frac < 0) frac = 0;
+                            if (frac > 1) frac = 1;
                             ns   = frac * tns;
                             hh   = ns / 3600;
                             mm   = (ns % 3600) / 60;
@@ -3571,7 +3925,7 @@ static void event_loop(VideoState *cur_stream)
                     }
                     break;
                 case SDL_BUTTON_LEFT:
-                    if (SDL_GetTicks() - last_click_left < double_click_time) {  // double click then toggle full screen. modified by coffey 20150104
+                    if (SDL_GetTicks() - last_click_left < double_click_time) {  // double click then toggle full screen. modified by Coffey 20150104
                         toggle_full_screen(cur_stream);
                         cur_stream->force_refresh = 1;
                         last_click_left = 0;
@@ -3584,11 +3938,43 @@ static void event_loop(VideoState *cur_stream)
                 }
             }
         case SDL_MOUSEMOTION:
+            {  // XXX: discard few mousemotion message after startup to prevent use invalid data. by Coffey 20150109
+                static int mousemotion_num = 0;
+                
+                if (mousemotion_num < 5) {
+                    mousemotion_num++;
+                    break;
+                }
+            }
             if (cursor_hidden) {
                 SDL_ShowCursor(1);
                 cursor_hidden = 0;
             }
             cursor_last_shown = av_gettime_relative();
+            
+            {  // check cursor position for OSD. show osd when cursor move to bottom of image
+                int height, fitted_height;
+                int bar_height;
+                
+                SDL_mutexP(osdstats.mutex);
+                height = osdstats.height;
+                fitted_height = osdstats.fitted_height;
+                SDL_mutexV(osdstats.mutex);
+                if (height && fitted_height) {
+                    bar_height = OSD_POSITION_BAR_HEIGHT * fitted_height / height;
+                } else {
+                    bar_height = OSD_POSITION_BAR_HEIGHT;
+                }
+                if ((event.motion.y >= cur_stream->last_display_rect.y + cur_stream->last_display_rect.h - bar_height) && 
+                    (event.motion.y < cur_stream->last_display_rect.y + cur_stream->last_display_rect.h) && 
+                    (event.motion.x >= cur_stream->last_display_rect.x) && 
+                    (event.motion.x < cur_stream->last_display_rect.x + cur_stream->last_display_rect.w)) {
+                    SDL_mutexP(osdstats.mutex);
+                    osdstats.show_pos = 1;
+                    osdstats.last_shown_pos = av_gettime_relative();
+                    SDL_mutexV(osdstats.mutex);
+                }
+            }
             break;
         case SDL_VIDEORESIZE:
                 screen = SDL_SetVideoMode(FFMIN(16383, event.resize.w), event.resize.h, 0,
@@ -3602,6 +3988,11 @@ static void event_loop(VideoState *cur_stream)
                 if (!is_full_screen) {   // keep previous screen size when get fullscreen mode.
                     screen_width  = screen->w;
                     screen_height = screen->h;
+                }
+                if (autoscale) {
+                    SDL_mutexP(osdstats.mutex);
+                    osdstats.vfilt_update = 1;
+                    SDL_mutexV(osdstats.mutex);
                 }
                 cur_stream->force_refresh = 1;
             break;
@@ -3769,6 +4160,8 @@ static const OptionDef options[] = {
     { "scodec", HAS_ARG | OPT_STRING | OPT_EXPERT, { &subtitle_codec_name }, "force subtitle decoder", "decoder_name" },
     { "vcodec", HAS_ARG | OPT_STRING | OPT_EXPERT, {    &video_codec_name }, "force video decoder",    "decoder_name" },
     { "autorotate", OPT_BOOL, { &autorotate }, "automatically rotate video", "" },
+    { "osd", OPT_BOOL | OPT_EXPERT, { &osd }, "show osd", "" },  // modified by Coffey 20150109
+    { "autoscale", OPT_BOOL | OPT_EXPERT, { &autoscale }, "auto scaling to current window size", "" },  // modified by Coffey 20150121
     { NULL, },
 };
 
@@ -3800,6 +4193,7 @@ void show_help_default(const char *opt, const char *arg)
            "m                   toggle mute\n"
            "9, 0                decrease and increase volume respectively\n"
            "/, *                decrease and increase volume respectively\n"
+           "l                   toggle loop\n"
            "a                   cycle audio channel in the current program\n"
            "v                   cycle video channel\n"
            "t                   cycle subtitle channel in the current program\n"
@@ -3807,9 +4201,17 @@ void show_help_default(const char *opt, const char *arg)
            "w                   cycle video filters or show modes\n"
            "s                   activate frame-step mode\n"
            "left/right          seek backward/forward 10 seconds\n"
+           "ctrl + left/right   seek backward/forward 3 seconds\n"
            "down/up             seek backward/forward 1 minute\n"
            "page down/page up   seek backward/forward 10 minutes\n"
-           "mouse click         seek to percentage in file corresponding to fraction of width\n"
+           "mouse:\n"
+           "left double click   toggle full screen\n"
+           "right               seek to percentage in file corresponding to fraction of width\n"
+           "wheel button        pause\n"
+           "wheel up            increase volume while playing, next frame while pause\n"
+           "wheel down          decrease volume while playing\n"
+           "back (tilt left)    seek backward 5 seconds\n"
+           "forward bottun (tilt right) seek forward 10 seconds\n"
            );
 }
 
@@ -3904,6 +4306,14 @@ int main(int argc, char **argv)
         av_log(NULL, AV_LOG_FATAL, "Could not initialize lock manager!\n");
         do_exit(NULL);
     }
+
+    // modified by Coffey. 20150107 -------------------
+    osdstats.mutex = SDL_CreateMutex();
+    if (osdstats.mutex == NULL) {
+        av_log(NULL, AV_LOG_FATAL, "Could not initialize mutex(osdstats)\n");
+        do_exit(NULL);
+    }
+    // ------------------------------------------------
 
     av_init_packet(&flush_pkt);
     flush_pkt.data = (uint8_t *)&flush_pkt;
