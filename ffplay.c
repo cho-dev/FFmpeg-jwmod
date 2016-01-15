@@ -375,6 +375,7 @@ static SDL_Surface *screen;
 
 static int osd = 1;           // show osd. 1:osd on, 0:osd off. modified by Coffey 20150109
 static int autoscale = 1;     // auto scaling to window size to avoid jaggy. modified by Coffey 20150121
+static int toggle_adisp = 1;  // control toggle audio display. 1:default(same as old code), 0:stop audio toggle. modified by coffey 20141215
 
 #define OSD_POSITION_BAR_HEIGHT  32
 
@@ -3789,10 +3790,14 @@ static void event_loop(VideoState *cur_stream)
                         cur_stream->vfilter_idx = 0;
                 } else {
                     cur_stream->vfilter_idx = 0;
-                    toggle_audio_display(cur_stream);
+                    if (toggle_adisp || cur_stream->show_mode != SHOW_MODE_VIDEO) {  // toggle mode optional. modified by coffey 20141225
+                        toggle_audio_display(cur_stream);
+                    }
                 }
 #else
-                toggle_audio_display(cur_stream);
+                if (toggle_adisp || cur_stream->show_mode != SHOW_MODE_VIDEO) {  // toggle mode optional. modified by coffey 20141225
+                    toggle_audio_display(cur_stream);
+                }
 #endif
                 break;
             case SDLK_l:
@@ -4162,6 +4167,7 @@ static const OptionDef options[] = {
     { "autorotate", OPT_BOOL, { &autorotate }, "automatically rotate video", "" },
     { "osd", OPT_BOOL | OPT_EXPERT, { &osd }, "show osd", "" },  // modified by Coffey 20150109
     { "autoscale", OPT_BOOL | OPT_EXPERT, { &autoscale }, "auto scaling to current window size", "" },  // modified by Coffey 20150121
+    { "toggle_adisp", OPT_BOOL | OPT_EXPERT, { &toggle_adisp }, "toggle audio display", "" },  // modified by coffey 20141225
     { NULL, },
 };
 
