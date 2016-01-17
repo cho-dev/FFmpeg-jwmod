@@ -331,6 +331,9 @@ static int wav_write_header(AVFormatContext *s)
     }
 
     if (wav->write_peak != 2) {
+        /* info header */
+        ff_riff_write_info(s);
+
         /* format header */
         fmt = ff_start_tag(pb, "fmt ");
         if (ff_put_wav_header(pb, s->streams[0]->codec, 0) < 0) {
@@ -363,9 +366,6 @@ static int wav_write_header(AVFormatContext *s)
     wav->minpts = INT64_MAX;
 
     if (wav->write_peak != 2) {
-        /* info header */
-        ff_riff_write_info(s);
-
         /* data header */
         wav->data = ff_start_tag(pb, "data");
     }
