@@ -3241,10 +3241,22 @@ static int read_thread(void *arg)
 
     if (!window_title && (t = av_dict_get(ic->metadata, "title", NULL, 0))) {
         char *cfname;
-        charcode_convert(&cfname, t->value, "UTF-8", "CP932");   // add char code check for Japanese.
+        int  utf8 = 1;
+
+        if (charcode_convert(&cfname, t->value, "UTF-8", "UTF-8")) {  // if not UTF-8
+            utf8 = 0;
+        }
         if (cfname) {
-            window_title = av_asprintf("%s - %s", cfname, input_filename);
             av_free(cfname);
+        }
+        if (!utf8) {
+            charcode_convert(&cfname, t->value, "UTF-8", "CP932");   // add char code check for Japanese.
+            if (cfname) {
+                window_title = av_asprintf("%s - %s", cfname, input_filename);
+                av_free(cfname);
+            } else {
+                window_title = av_asprintf("%s - %s", t->value, input_filename);
+            }
         } else {
             window_title = av_asprintf("%s - %s", t->value, input_filename);
         }

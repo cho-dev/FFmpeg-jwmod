@@ -137,19 +137,25 @@ static void dump_metadata(void *ctx, AVDictionary *m, const char *indent)
         {  // fix charcode in metadata string for CP932. modified by Coffey 20150117 (experimental) ===========
             AVDictionaryEntry *t = NULL;
             char *outstr;
-            int ret;
+            int ret, utf8;
             
             while ((t = av_dict_get(m, "", t, AV_DICT_IGNORE_SUFFIX))) {
                 if (strcmp("language", t->key)) {
+                    utf8 = 1;
                     if (charcode_convert(&outstr, t->value, "UTF-8", "UTF-8")) {  // if not UTF-8
-                        if (outstr)
-                            av_free(outstr);
+                        utf8 = 0;
+                    }
+                    if (outstr) {
+                        av_free(outstr);
+                    }
+                    if (!utf8) {
                         ret = charcode_convert(&outstr, t->value, "UTF-8", "CP932");
                         if (!ret && outstr) {
                             av_dict_set(&m, t->key, outstr, 0);
                         }
-                        if (outstr)
+                        if (outstr) {
                             av_free(outstr);
+                        }
                     }
                 }
             }
