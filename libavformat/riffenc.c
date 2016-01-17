@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/charcode.h"
 #include "libavutil/dict.h"
 #include "libavutil/log.h"
 #include "libavutil/mathematics.h"
@@ -314,10 +315,25 @@ void ff_riff_write_info(AVFormatContext *s)
 
     list_pos = ff_start_tag(pb, "LIST");
     ffio_wfourcc(pb, "INFO");
-    for (i = 0; *riff_tags[i]; i++)
-        if ((t = av_dict_get(s->metadata, riff_tags[i],
-                             NULL, AV_DICT_MATCH_CASE)))
-            ff_riff_write_info_tag(s->pb, t->key, t->value);
+    for (i = 0; *riff_tags[i]; i++) {
+        if (0) {  // true: original code (UTF-8), false: CP932 encode (experimental)
+            if ((t = av_dict_get(s->metadata, riff_tags[i],
+                                 NULL, AV_DICT_MATCH_CASE)))
+                ff_riff_write_info_tag(s->pb, t->key, t->value);
+        } else {
+            if ((t = av_dict_get(s->metadata, riff_tags[i],
+                                 NULL, AV_DICT_MATCH_CASE))) {
+                char *outstr;
+                charcode_convert(&outstr, t->value, "CP932", "UTF-8");
+                if (outstr) {
+                    ff_riff_write_info_tag(s->pb, t->key, outstr);
+                    av_free(outstr);
+                } else {
+                    ff_riff_write_info_tag(s->pb, t->key, t->value);
+                }
+            }
+        }
+    }
     ff_end_tag(pb, list_pos);
 }
 
