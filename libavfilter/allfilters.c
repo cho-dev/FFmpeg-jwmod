@@ -301,6 +301,7 @@ void avfilter_register_all(void)
 
     /* multimedia filters */
     REGISTER_FILTER(ADRAWGRAPH,     adrawgraph,     avf);
+    REGISTER_FILTER(AHISTOGRAM,     ahistogram,     avf);
     REGISTER_FILTER(APHASEMETER,    aphasemeter,    avf);
     REGISTER_FILTER(AVECTORSCOPE,   avectorscope,   avf);
     REGISTER_FILTER(CONCAT,         concat,         avf);
@@ -311,6 +312,7 @@ void avfilter_register_all(void)
     REGISTER_FILTER(SHOWVOLUME,     showvolume,     avf);
     REGISTER_FILTER(SHOWWAVES,      showwaves,      avf);
     REGISTER_FILTER(SHOWWAVESPIC,   showwavespic,   avf);
+    REGISTER_FILTER(SPECTRUMSYNTH,  spectrumsynth,  vaf);
 
     /* multimedia sources */
     REGISTER_FILTER(AMOVIE,         amovie,         avsrc);

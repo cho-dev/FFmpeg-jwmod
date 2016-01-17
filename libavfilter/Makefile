@@ -281,6 +281,7 @@ OBJS-$(CONFIG_NULLSINK_FILTER)               += vsink_nullsink.o
 
 # multimedia filters
 OBJS-$(CONFIG_ADRAWGRAPH_FILTER)             += f_drawgraph.o
+OBJS-$(CONFIG_AHISTOGRAM_FILTER)             += avf_ahistogram.o
 OBJS-$(CONFIG_APHASEMETER_FILTER)            += avf_aphasemeter.o
 OBJS-$(CONFIG_AVECTORSCOPE_FILTER)           += avf_avectorscope.o
 OBJS-$(CONFIG_CONCAT_FILTER)                 += avf_concat.o
@@ -291,6 +292,7 @@ OBJS-$(CONFIG_SHOWSPECTRUMPIC_FILTER)        += avf_showspectrum.o window_func.o
 OBJS-$(CONFIG_SHOWVOLUME_FILTER)             += avf_showvolume.o
 OBJS-$(CONFIG_SHOWWAVES_FILTER)              += avf_showwaves.o
 OBJS-$(CONFIG_SHOWWAVESPIC_FILTER)           += avf_showwaves.o
+OBJS-$(CONFIG_SPECTRUMSYNTH_FILTER)          += vaf_spectrumsynth.o window_func.o
 
 # multimedia sources
 OBJS-$(CONFIG_AMOVIE_FILTER)                 += src_movie.o
