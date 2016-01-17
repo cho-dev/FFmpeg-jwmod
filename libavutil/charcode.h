@@ -18,9 +18,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef FFMPEG_CHARCODE_H
-#define FFMPEG_CHARCODE_H
+#ifndef AVUTIL_CHARCODE_H
+#define AVUTIL_CHARCODE_H
 
+#include "config.h"
 #if CONFIG_ICONV
 #include "iconv.h"
 #endif
