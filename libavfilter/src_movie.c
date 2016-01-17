@@ -379,6 +379,7 @@ static int movie_config_output_props(AVFilterLink *outlink)
         outlink->w          = c->width;
         outlink->h          = c->height;
         outlink->frame_rate = st->st->r_frame_rate;
+        outlink->sample_aspect_ratio = c->sample_aspect_ratio;  // FIXME 20141221 modified by Coffey (keep aspect ratio at ffplay when use src filter 'movie')
         break;
     case AVMEDIA_TYPE_AUDIO:
         break;
