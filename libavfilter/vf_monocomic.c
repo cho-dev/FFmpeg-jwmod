@@ -279,8 +279,6 @@ static int query_formats(AVFilterContext *ctx)
     if (!fmts_list)
         return AVERROR(ENOMEM);
     return ff_set_common_formats(ctx, fmts_list);
-
-    return 0;
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *inpic)
