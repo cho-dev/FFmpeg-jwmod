@@ -183,6 +183,7 @@ OBJS-$(CONFIG_LUTYUV_FILTER)                 += vf_lut.o
 OBJS-$(CONFIG_MASKEDMERGE_FILTER)            += vf_maskedmerge.o framesync.o
 OBJS-$(CONFIG_MCDEINT_FILTER)                += vf_mcdeint.o
 OBJS-$(CONFIG_MERGEPLANES_FILTER)            += vf_mergeplanes.o framesync.o
+OBJS-$(CONFIG_MONOCOMIC_FILTER)              += vf_monocomic.o
 OBJS-$(CONFIG_MPDECIMATE_FILTER)             += vf_mpdecimate.o
 OBJS-$(CONFIG_NEGATE_FILTER)                 += vf_lut.o
 OBJS-$(CONFIG_NOFORMAT_FILTER)               += vf_format.o

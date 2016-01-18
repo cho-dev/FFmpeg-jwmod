@@ -204,6 +204,7 @@ void avfilter_register_all(void)
     REGISTER_FILTER(MASKEDMERGE,    maskedmerge,    vf);
     REGISTER_FILTER(MCDEINT,        mcdeint,        vf);
     REGISTER_FILTER(MERGEPLANES,    mergeplanes,    vf);
+    REGISTER_FILTER(MONOCOMIC,      monocomic,      vf);
     REGISTER_FILTER(MPDECIMATE,     mpdecimate,     vf);
     REGISTER_FILTER(NEGATE,         negate,         vf);
     REGISTER_FILTER(NOFORMAT,       noformat,       vf);
