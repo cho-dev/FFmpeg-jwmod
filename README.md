@@ -12,9 +12,10 @@ This FFmpeg is modified for Japanese Windows. (also usable other language)
 * add some video filters
 * various bug fix
 
+Need iconv(libiconv) to build FFmpeg-jwmod.
+(iconv is here http://www.gnu.org/software/libiconv/)
 
-
-Following README is FFmpeg original.
+Following README is original FFmpeg.
 
 FFmpeg README
 =============
