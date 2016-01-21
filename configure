@@ -299,7 +299,7 @@ Toolchain options:
   --cpu=CPU                select the minimum required CPU (affects
                            instruction selection, may crash on older CPUs)
   --cross-prefix=PREFIX    use PREFIX for compilation tools [$cross_prefix]
-  --progs-suffix=SUFFIX    program name suffix []
+  --progs-suffix=SUFFIX    program name suffix [-jwmod]
   --enable-cross-compile   assume a cross-compiler is used
   --sysroot=PATH           root of cross-build tree
   --sysinclude=PATH        location of cross-build system headers
@@ -2976,6 +2976,7 @@ doc_deps_any="manpages htmlpages podpages txtpages"
 # default parameters
 
 logfile="config.log"
+progs_suffix="-jwmod"
 
 # installation paths
 prefix_default="/usr/local"
