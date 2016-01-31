@@ -85,8 +85,8 @@ static int config_props_input(AVFilterLink *inlink)
     
     // get width, height of chroma plane
     pixdesc = av_pix_fmt_desc_get(inlink->format);
-    rc->chroma_w = FF_CEIL_RSHIFT(inlink->w, pixdesc->log2_chroma_w);
-    rc->chroma_h = FF_CEIL_RSHIFT(inlink->h, pixdesc->log2_chroma_h);
+    rc->chroma_w = AV_CEIL_RSHIFT(inlink->w, pixdesc->log2_chroma_w);
+    rc->chroma_h = AV_CEIL_RSHIFT(inlink->h, pixdesc->log2_chroma_h);
     
     // alias:
     // 'yuvrangeconv=full:1'  same as 'yuvrangeconv=full:autodetect=1'
