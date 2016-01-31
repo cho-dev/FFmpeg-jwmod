@@ -413,6 +413,7 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { AV_CODEC_ID_SCREENPRESSO, MKTAG('S', 'P', 'V', '1') },
     { AV_CODEC_ID_RSCC,         MKTAG('R', 'S', 'C', 'C') },
     { AV_CODEC_ID_RSCC,         MKTAG('I', 'S', 'C', 'C') },
+    { AV_CODEC_ID_CFHD,         MKTAG('C', 'F', 'H', 'D') },
     { AV_CODEC_ID_NONE,         0 }
 };
 
@@ -463,6 +464,8 @@ const AVCodecTag ff_codec_wav_tags[] = {
     { AV_CODEC_ID_XMA1,            0x0165 },
     { AV_CODEC_ID_XMA2,            0x0166 },
     { AV_CODEC_ID_ADPCM_CT,        0x0200 },
+    { AV_CODEC_ID_DVAUDIO,         0x0215 },
+    { AV_CODEC_ID_DVAUDIO,         0x0216 },
     { AV_CODEC_ID_ATRAC3,          0x0270 },
     { AV_CODEC_ID_ADPCM_G722,      0x028F },
     { AV_CODEC_ID_IMC,             0x0401 },
