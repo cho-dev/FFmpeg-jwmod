@@ -1015,16 +1015,17 @@ static void osd_fillrect(Frame *vp, int x, int y, int w, int h, uint32_t color)
     // draw luminance plane
     if (data_y && linesize_y) {
         uint8_t *pixel;
+        int px, py;
         pixel = data_y + linesize_y * y;
         if (color_a == 255) {
-            for ( int py = y; py < y+h; py++ ) {
-                for ( int px = x; px < x+w; px++ )
+            for ( py = y; py < y+h; py++ ) {
+                for ( px = x; px < x+w; px++ )
                     *(pixel + px) = color_y;
                 pixel += linesize_y;
             }
         } else {
-            for ( int py = y; py < y+h; py++ ) {
-                for ( int px = x; px < x+w; px++ )
+            for ( py = y; py < y+h; py++ ) {
+                for ( px = x; px < x+w; px++ )
                     *(pixel + px) = (color_y * color_a + *(pixel + px) * ( 255 - color_a ) + 128) / 255;
                 pixel += linesize_y;
             }
@@ -1033,16 +1034,17 @@ static void osd_fillrect(Frame *vp, int x, int y, int w, int h, uint32_t color)
     // draw chroma cb plane
     if (data_cb && linesize_cb) {
         uint8_t *pixel;
+        int px, py;
         pixel = data_cb + linesize_cb * (y/2);
         if (color_a == 255) {
-            for ( int py = y/2; py < (y+h+1)/2; py++ ) {
-                for ( int px = x/2; px < (x+w+1)/2; px++ )
+            for ( py = y/2; py < (y+h+1)/2; py++ ) {
+                for ( px = x/2; px < (x+w+1)/2; px++ )
                     *(pixel + px) = color_cb;
                 pixel += linesize_cb;
             }
         } else {
-            for ( int py = y/2; py < (y+h+1)/2; py++ ) {
-                for ( int px = x/2; px < (x+w+1)/2; px++ )
+            for ( py = y/2; py < (y+h+1)/2; py++ ) {
+                for ( px = x/2; px < (x+w+1)/2; px++ )
                     *(pixel + px) = (color_cb * color_a + *(pixel + px) * ( 255 - color_a ) + 128) / 255;
                 pixel += linesize_cb;
             }
@@ -1051,16 +1053,17 @@ static void osd_fillrect(Frame *vp, int x, int y, int w, int h, uint32_t color)
     // draw chroma cr plane
     if (data_cr && linesize_cr) {
         uint8_t *pixel;
+        int px, py;
         pixel = data_cr + linesize_cr * (y/2);
         if (color_a == 255) {
-            for ( int py = y/2; py < (y+h+1)/2; py++ ) {
-                for ( int px = x/2; px < (x+w+1)/2; px++ )
+            for ( py = y/2; py < (y+h+1)/2; py++ ) {
+                for ( px = x/2; px < (x+w+1)/2; px++ )
                     *(pixel + px) = color_cr;
                 pixel += linesize_cr;
             }
         } else {
-            for ( int py = y/2; py < (y+h+1)/2; py++ ) {
-                for ( int px = x/2; px < (x+w+1)/2; px++ )
+            for ( py = y/2; py < (y+h+1)/2; py++ ) {
+                for ( px = x/2; px < (x+w+1)/2; px++ )
                     *(pixel + px) = (color_cr * color_a + *(pixel + px) * ( 255 - color_a ) + 128) / 255;
                 pixel += linesize_cr;
             }
