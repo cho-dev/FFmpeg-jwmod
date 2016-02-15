@@ -112,7 +112,11 @@ MAKE_ACCESSORS(AVFormatContext, format, AVCodec *, data_codec)
 MAKE_ACCESSORS(AVFormatContext, format, int, metadata_header_padding)
 MAKE_ACCESSORS(AVFormatContext, format, void *, opaque)
 MAKE_ACCESSORS(AVFormatContext, format, av_format_control_message, control_message_cb)
+#if FF_API_OLD_OPEN_CALLBACKS
+FF_DISABLE_DEPRECATION_WARNINGS
 MAKE_ACCESSORS(AVFormatContext, format, AVOpenCallback, open_cb)
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
 int64_t av_stream_get_end_pts(const AVStream *st)
 {
@@ -356,9 +360,7 @@ static int init_input(AVFormatContext *s, const char *filename,
         (!s->iformat && (s->iformat = av_probe_input_format2(&pd, 0, &score))))
         return score;
 
-    if ((ret = ffio_open_whitelist(&s->pb, filename, AVIO_FLAG_READ | s->avio_flags,
-                                   &s->interrupt_callback, options,
-                                   s->protocol_whitelist)) < 0)
+    if ((ret = s->io_open(s, &s->pb, filename, AVIO_FLAG_READ | s->avio_flags, options)) < 0)
         return ret;
 
     if (s->iformat)
@@ -4232,18 +4234,6 @@ int ff_find_stream_index(AVFormatContext *s, int id)
     return -1;
 }
 
-int64_t ff_iso8601_to_unix_time(const char *datestr)
-{
-    struct tm time1 = { 0 }, time2 = { 0 };
-    const char *ret1, *ret2;
-    ret1 = av_small_strptime(datestr, "%Y - %m - %d %T", &time1);
-    ret2 = av_small_strptime(datestr, "%Y - %m - %dT%T", &time2);
-    if (ret2 && !ret1)
-        return av_timegm(&time2);
-    else
-        return av_timegm(&time1);
-}
-
 int avformat_query_codec(const AVOutputFormat *ofmt, enum AVCodecID codec_id,
                          int std_compliance)
 {
@@ -4741,4 +4731,28 @@ int av_apply_bitstream_filters(AVCodecContext *codec, AVPacket *pkt,
         bsfc = bsfc->next;
     }
     return ret;
+}
+
+void ff_format_io_close(AVFormatContext *s, AVIOContext **pb)
+{
+    if (*pb)
+        s->io_close(s, *pb);
+    *pb = NULL;
+}
+
+int ff_parse_creation_time_metadata(AVFormatContext *s, int64_t *timestamp, int return_seconds)
+{
+    AVDictionaryEntry *entry;
+    int64_t parsed_timestamp;
+    int ret;
+    if ((entry = av_dict_get(s->metadata, "creation_time", NULL, 0))) {
+        if ((ret = av_parse_time(&parsed_timestamp, entry->value, 0)) >= 0) {
+            *timestamp = return_seconds ? parsed_timestamp / 1000000 : parsed_timestamp;
+            return 1;
+        } else {
+            av_log(s, AV_LOG_WARNING, "Failed to parse creation_time %s\n", entry->value);
+            return ret;
+        }
+    }
+    return 0;
 }

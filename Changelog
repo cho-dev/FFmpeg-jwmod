@@ -2,6 +2,10 @@ Entries are sorted chronologically from oldest to youngest within each release,
 releases are sorted from youngest to oldest.
 
 version <next>:
+- DXVA2-accelerated HEVC Main10 decoding
+
+
+version 3.0:
 - Common Encryption (CENC) MP4 encoding and decoding support
 - DXV decoding
 - extrastereo filter
@@ -66,6 +70,9 @@ version <next>:
 - nnedi deinterlacer
 - streamselect video and astreamselect audio filter
 - swaprect filter
+- metadata video and ametadata audio filter
+- SMPTE VC-2 HQ profile support for the Dirac decoder
+- SMPTE VC-2 native encoder supporting the HQ profile
 
 
 version 2.8:
