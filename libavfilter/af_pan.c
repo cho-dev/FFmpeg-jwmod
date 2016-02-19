@@ -104,7 +104,7 @@ static av_cold int init(AVFilterContext *ctx)
     char *arg, *arg0, *tokenizer, *args = av_strdup(pan->args);
     int out_ch_id, in_ch_id, len, named, ret;
     int nb_in_channels[2] = { 0, 0 }; // number of unnamed and named input channels
-    double gain;
+    double gain, sign;
 
     if (!pan->args) {
         av_log(ctx, AV_LOG_ERROR,
@@ -161,6 +161,14 @@ static av_cold int init(AVFilterContext *ctx)
             goto fail;
         }
         /* gains */
+        skip_spaces(&arg);
+        sign = 1;
+        if (*arg == '-') {
+            sign = -1;
+            arg++;
+        } else if (*arg == '+') {
+            arg++; 
+        }
         while (1) {
             gain = 1;
             if (sscanf(arg, "%lf%n *%n", &gain, &len, &len))
@@ -178,11 +186,15 @@ static av_cold int init(AVFilterContext *ctx)
                 ret = AVERROR(EINVAL);
                 goto fail;
             }
-            pan->gain[out_ch_id][in_ch_id] = gain;
+            pan->gain[out_ch_id][in_ch_id] += gain * sign;
             skip_spaces(&arg);
             if (!*arg)
                 break;
-            if (*arg != '+') {
+            if (*arg == '+') {
+                sign = 1;
+            } else if (*arg == '-') {
+                sign = -1;
+            } else {
                 av_log(ctx, AV_LOG_ERROR, "Syntax error near \"%.8s\"\n", arg);
                 ret = AVERROR(EINVAL);
                 goto fail;
