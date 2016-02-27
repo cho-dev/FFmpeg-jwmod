@@ -2123,8 +2123,12 @@ static int decode_video(InputStream *ist, AVPacket *pkt, int *got_output)
     ist->hwaccel_retrieved_pix_fmt = decoded_frame->format;
 
     best_effort_timestamp= av_frame_get_best_effort_timestamp(decoded_frame);
-    if(best_effort_timestamp != AV_NOPTS_VALUE)
-        ist->next_pts = ist->pts = av_rescale_q(decoded_frame->pts = best_effort_timestamp, ist->st->time_base, AV_TIME_BASE_Q);
+    if(best_effort_timestamp != AV_NOPTS_VALUE) {
+        int64_t ts = av_rescale_q(decoded_frame->pts = best_effort_timestamp, ist->st->time_base, AV_TIME_BASE_Q);
+
+        if (ts != AV_NOPTS_VALUE)
+            ist->next_pts = ist->pts = ts;
+    }
 
     if (debug_ts) {
         av_log(NULL, AV_LOG_INFO, "decoder -> ist_index:%d type:video "
@@ -2543,6 +2547,8 @@ static int init_input_stream(int ist_index, char *error, int error_len)
                 av_log(NULL, AV_LOG_WARNING, "Warning using DVB subtitles for filtering and output at the same time is not fully supported, also see -compute_edt [0|1]\n");
         }
 
+        av_dict_set(&ist->decoder_opts, "sub_text_format", "ass", AV_DICT_DONT_OVERWRITE);
+
         if (!av_dict_get(ist->decoder_opts, "threads", NULL, 0))
             av_dict_set(&ist->decoder_opts, "threads", "auto", 0);
         if ((ret = avcodec_open2(ist->dec_ctx, codec, &ist->decoder_opts)) < 0) {
@@ -2602,6 +2608,12 @@ static int init_output_stream(OutputStream *ost, char *error, int error_len)
             !av_dict_get(ost->encoder_opts, "b", NULL, 0) &&
             !av_dict_get(ost->encoder_opts, "ab", NULL, 0))
             av_dict_set(&ost->encoder_opts, "b", "128000", 0);
+
+        if (ost->filter && ost->filter->filter->inputs[0]->hw_frames_ctx) {
+            ost->enc_ctx->hw_frames_ctx = av_buffer_ref(ost->filter->filter->inputs[0]->hw_frames_ctx);
+            if (!ost->enc_ctx->hw_frames_ctx)
+                return AVERROR(ENOMEM);
+        }
 
         if ((ret = avcodec_open2(ost->enc_ctx, codec, &ost->encoder_opts)) < 0) {
             if (ret == AVERROR_EXPERIMENTAL)
@@ -3194,13 +3206,6 @@ static int transcode_init(void)
         }
     }
 
-    /* open each encoder */
-    for (i = 0; i < nb_output_streams; i++) {
-        ret = init_output_stream(output_streams[i], error, sizeof(error));
-        if (ret < 0)
-            goto dump_format;
-    }
-
     /* init input streams */
     for (i = 0; i < nb_input_streams; i++)
         if ((ret = init_input_stream(i, error, sizeof(error))) < 0) {
@@ -3210,6 +3215,13 @@ static int transcode_init(void)
             }
             goto dump_format;
         }
+
+    /* open each encoder */
+    for (i = 0; i < nb_output_streams; i++) {
+        ret = init_output_stream(output_streams[i], error, sizeof(error));
+        if (ret < 0)
+            goto dump_format;
+    }
 
     /* discard unused programs */
     for (i = 0; i < nb_input_files; i++) {

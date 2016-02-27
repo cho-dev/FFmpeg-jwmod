@@ -32,6 +32,9 @@ HEADERS = adler32.h                                                     \
           frame.h                                                       \
           hash.h                                                        \
           hmac.h                                                        \
+          hwcontext.h                                                   \
+          hwcontext_cuda.h                                              \
+          hwcontext_vdpau.h                                             \
           imgutils.h                                                    \
           intfloat.h                                                    \
           intreadwrite.h                                                \
@@ -110,6 +113,7 @@ OBJS = adler32.o                                                        \
        frame.o                                                          \
        hash.o                                                           \
        hmac.o                                                           \
+       hwcontext.o                                                      \
        imgutils.o                                                       \
        integer.o                                                        \
        intmath.o                                                        \
@@ -150,12 +154,16 @@ OBJS-$(!HAVE_ATOMICS_NATIVE)            += atomic.o                     \
 
 OBJS-$(CONFIG_LZO)                      += lzo.o
 OBJS-$(CONFIG_OPENCL)                   += opencl.o opencl_internal.o
+OBJS-$(CONFIG_CUDA)                     += hwcontext_cuda.o
+OBJS-$(CONFIG_VDPAU)                    += hwcontext_vdpau.o
 
 OBJS += $(COMPAT_OBJS:%=../compat/%)
 
 # Windows resource file
 SLIBOBJS-$(HAVE_GNU_WINDRES)            += avutilres.o
 
+SKIPHEADERS-$(CONFIG_CUDA)             += hwcontext_cuda.h
+SKIPHEADERS-$(CONFIG_VDPAU)            += hwcontext_vdpau.h
 SKIPHEADERS-$(HAVE_ATOMICS_GCC)        += atomic_gcc.h
 SKIPHEADERS-$(HAVE_ATOMICS_SUNCC)      += atomic_suncc.h
 SKIPHEADERS-$(HAVE_ATOMICS_WIN32)      += atomic_win32.h

@@ -74,12 +74,15 @@ typedef struct AVIStream {
     int max_size;
     int sample_requested;
 
+    int64_t pal_offset;
+    int hdr_pal_done;
+
     int64_t last_dts;
 
     AVIIndex indexes;
 } AVIStream;
 
-static int avi_write_packet(AVFormatContext *s, AVPacket *pkt);
+static int avi_write_packet_internal(AVFormatContext *s, AVPacket *pkt);
 
 static inline AVIIentry *avi_get_ientry(const AVIIndex *idx, int ent_id)
 {
@@ -359,6 +362,7 @@ static int avi_write_header(AVFormatContext *s)
                     && enc->pix_fmt == AV_PIX_FMT_RGB555LE
                     && enc->bits_per_coded_sample == 15)
                     enc->bits_per_coded_sample = 16;
+                avist->pal_offset = avio_tell(pb) + 40;
                 ff_put_bmp_header(pb, enc, ff_codec_bmp_tags, 0, 0);
                 pix_fmt = avpriv_find_pix_fmt(avpriv_pix_fmt_bps_avi,
                                               enc->bits_per_coded_sample);
@@ -637,7 +641,7 @@ static int write_skip_frames(AVFormatContext *s, int stream_index, int64_t dts)
         empty_packet.size         = 0;
         empty_packet.data         = NULL;
         empty_packet.stream_index = stream_index;
-        avi_write_packet(s, &empty_packet);
+        avi_write_packet_internal(s, &empty_packet);
         ff_dlog(s, "dup dts:%s packet_count:%d\n", av_ts2str(dts), avist->packet_count);
     }
 
@@ -647,13 +651,12 @@ static int write_skip_frames(AVFormatContext *s, int stream_index, int64_t dts)
 static int avi_write_packet(AVFormatContext *s, AVPacket *pkt)
 {
     unsigned char tag[5];
-    unsigned int flags = 0;
     const int stream_index = pkt->stream_index;
+    const uint8_t *data    = pkt->data;
     int size               = pkt->size;
-    AVIContext *avi     = s->priv_data;
     AVIOContext *pb     = s->pb;
-    AVIStream *avist    = s->streams[stream_index]->priv_data;
     AVCodecContext *enc = s->streams[stream_index]->codec;
+    AVIStream *avist    = s->streams[stream_index]->priv_data;
     int ret;
 
     if (enc->codec_id == AV_CODEC_ID_H264 && enc->codec_tag == MKTAG('H','2','6','4') && pkt->size) {
@@ -664,6 +667,59 @@ static int avi_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     if ((ret = write_skip_frames(s, stream_index, pkt->dts)) < 0)
         return ret;
+
+    if (enc->codec_id == AV_CODEC_ID_RAWVIDEO && enc->codec_tag == 0) {
+        int64_t bpc = enc->bits_per_coded_sample != 15 ? enc->bits_per_coded_sample : 16;
+        int expected_stride = ((enc->width * bpc + 31) >> 5)*4;
+
+        ret = ff_reshuffle_raw_rgb(s, &pkt, enc, expected_stride);
+        if (ret < 0)
+            return ret;
+        if (ret) {
+            if (ret == CONTAINS_PAL) {
+                int pc_tag, i;
+                int pal_size = 1 << enc->bits_per_coded_sample;
+                if (!avist->hdr_pal_done) {
+                    int64_t cur_offset = avio_tell(pb);
+                    avio_seek(pb, avist->pal_offset, SEEK_SET);
+                    for (i = 0; i < pal_size; i++) {
+                        uint32_t v = AV_RL32(data + size - 4*pal_size + 4*i);
+                        avio_wl32(pb, v & 0xffffff);
+                    }
+                    avio_seek(pb, cur_offset, SEEK_SET);
+                    avist->hdr_pal_done++;
+                }
+                avi_stream2fourcc(tag, stream_index, enc->codec_type);
+                tag[2] = 'p'; tag[3] = 'c';
+                pc_tag = ff_start_tag(pb, tag);
+                avio_w8(pb, 0);
+                avio_w8(pb, pal_size & 0xFF);
+                avio_wl16(pb, 0); // reserved
+                for (i = 0; i < pal_size; i++) {
+                    uint32_t v = AV_RL32(data + size - 4*pal_size + 4*i);
+                    avio_wb32(pb, v<<8);
+                }
+                ff_end_tag(pb, pc_tag);
+            }
+            ret = avi_write_packet_internal(s, pkt);
+            av_packet_free(&pkt);
+            return ret;
+        }
+    }
+
+    return avi_write_packet_internal(s, pkt);
+}
+
+static int avi_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
+{
+    unsigned char tag[5];
+    unsigned int flags = 0;
+    const int stream_index = pkt->stream_index;
+    int size               = pkt->size;
+    AVIContext *avi     = s->priv_data;
+    AVIOContext *pb     = s->pb;
+    AVIStream *avist    = s->streams[stream_index]->priv_data;
+    AVCodecContext *enc = s->streams[stream_index]->codec;
 
     if (pkt->dts != AV_NOPTS_VALUE)
         avist->last_dts = pkt->dts + pkt->duration;

@@ -44,7 +44,7 @@ Miscellaneous Areas
 
 documentation                           Stefano Sabatini, Mike Melanson, Timothy Gu, Lou Logan
 build system (configure, makefiles)     Diego Biurrun, Mans Rullgard
-project server                          Árpád Gereöffy, Michael Niedermayer, Reimar Doeffinger, Alexander Strasser, Lou Logan
+project server                          Árpád Gereöffy, Michael Niedermayer, Reimar Doeffinger, Alexander Strasser
 presets                                 Robert Swain
 metadata subsystem                      Aurelien Jacobs
 release management                      Michael Niedermayer
@@ -353,6 +353,7 @@ Filters:
   af_biquads.c                          Paul B Mahol
   af_chorus.c                           Paul B Mahol
   af_compand.c                          Paul B Mahol
+  af_firequalizer.c                     Muhammad Faiz
   af_ladspa.c                           Paul B Mahol
   af_pan.c                              Nicolas George
   af_sidechaincompress.c                Paul B Mahol

@@ -196,6 +196,7 @@ Individual component options:
 External library support:
   --enable-avisynth        enable reading of AviSynth script files [no]
   --disable-bzlib          disable bzlib [autodetect]
+  --enable-cuda            enable dynamically linked CUDA [no]
   --enable-chromaprint     enable audio fingerprinting with chromaprint [no]
   --enable-fontconfig      enable fontconfig, useful for drawtext filter [no]
   --enable-frei0r          enable frei0r video filtering [no]
@@ -310,6 +311,7 @@ Toolchain options:
   --nm=NM                  use nm tool NM [$nm_default]
   --ar=AR                  use archive tool AR [$ar_default]
   --as=AS                  use assembler AS [$as_default]
+  --strip=STRIP            use strip tool STRIP [$strip_default]
   --windres=WINDRES        use windows resource compiler WINDRES [$windres_default]
   --yasmexe=EXE            use yasm-compatible assembler EXE [$yasmexe_default]
   --cc=CC                  use C compiler CC [$cc_default]
@@ -1427,6 +1429,7 @@ EXTERNAL_LIBRARY_LIST="
     bzlib
     chromaprint
     crystalhd
+    cuda
     decklink
     frei0r
     gcrypt
@@ -1734,6 +1737,7 @@ BUILTIN_LIST="
     mm_empty
     rdtsc
     sarestart
+    sem_timedwait
     sync_val_compare_and_swap
 "
 HAVE_LIST_CMDLINE="
@@ -1755,6 +1759,7 @@ HEADERS_LIST="
     asm_types_h
     cdio_paranoia_h
     cdio_paranoia_paranoia_h
+    dispatch_dispatch_h
     dev_bktr_ioctl_bt848_h
     dev_bktr_ioctl_meteor_h
     dev_ic_bt8xx_h
@@ -2007,6 +2012,7 @@ CONFIG_EXTRA="
     iirfilter
     imdct15
     intrax8
+    iso_media
     ividsp
     jpegtables
     lgplv3
@@ -2039,6 +2045,7 @@ CONFIG_EXTRA="
     texturedsp
     texturedspenc
     tpeldsp
+    vc1dsp
     videodsp
     vp3dsp
     vp56dsp
@@ -2222,6 +2229,7 @@ dirac_parse_select="golomb"
 error_resilience_select="me_cmp"
 faandct_deps="faan fdctdsp"
 faanidct_deps="faan idctdsp"
+h264dsp_select="startcode"
 frame_thread_encoder_deps="encoders threads"
 intrax8_select="error_resilience"
 mdct_select="fft"
@@ -2233,6 +2241,7 @@ mpegvideo_select="blockdsp h264chroma hpeldsp idctdsp me_cmp mpeg_er videodsp"
 mpegvideoenc_select="me_cmp mpegvideo pixblockdsp qpeldsp"
 qsvdec_select="qsv"
 qsvenc_select="qsv"
+vc1dsp_select="h264chroma qpeldsp startcode"
 rdft_select="fft"
 
 # decoders / encoders
@@ -2286,7 +2295,7 @@ eac3_decoder_select="ac3_decoder"
 eac3_encoder_select="ac3_encoder"
 eamad_decoder_select="aandcttables blockdsp bswapdsp idctdsp mpegvideo"
 eatgq_decoder_select="aandcttables"
-eatqi_decoder_select="aandcttables blockdsp bswapdsp idctdsp mpeg1video_decoder"
+eatqi_decoder_select="aandcttables blockdsp bswapdsp idctdsp"
 exr_decoder_select="zlib"
 ffv1_decoder_select="golomb rangecoder"
 ffv1_encoder_select="rangecoder"
@@ -2312,7 +2321,7 @@ h263_encoder_select="aandcttables h263dsp mpegvideoenc"
 h263i_decoder_select="h263_decoder"
 h263p_decoder_select="h263_decoder"
 h263p_encoder_select="h263_encoder"
-h264_decoder_select="cabac golomb h264chroma h264dsp h264pred h264qpel startcode videodsp"
+h264_decoder_select="cabac golomb h264chroma h264dsp h264pred h264qpel videodsp"
 h264_decoder_suggest="error_resilience"
 h264_qsv_decoder_deps="libmfx"
 h264_qsv_decoder_select="h264_mp4toannexb_bsf h264_parser qsvdec h264_qsv_hwaccel"
@@ -2379,7 +2388,7 @@ msmpeg4v2_decoder_select="h263_decoder"
 msmpeg4v2_encoder_select="h263_encoder"
 msmpeg4v3_decoder_select="h263_decoder"
 msmpeg4v3_encoder_select="h263_encoder"
-mss2_decoder_select="vc1_decoder"
+mss2_decoder_select="vc1_decoder mpegvideo"
 mts2_decoder_select="mss34dsp"
 mxpeg_decoder_select="mjpeg_decoder"
 nellymoser_decoder_select="mdct sinewin"
@@ -2434,7 +2443,7 @@ txd_decoder_select="texturedsp"
 utvideo_decoder_select="bswapdsp"
 utvideo_encoder_select="bswapdsp huffman huffyuvencdsp"
 vble_decoder_select="huffyuvdsp"
-vc1_decoder_select="blockdsp h263_decoder h264qpel intrax8 qpeldsp startcode"
+vc1_decoder_select="blockdsp h263_decoder h264qpel intrax8 mpegvideo vc1dsp"
 vc1_qsv_decoder_deps="libmfx"
 vc1_qsv_decoder_select="qsvdec vc1_qsv_hwaccel"
 vc1image_decoder_select="vc1_decoder"
@@ -2595,7 +2604,7 @@ h264_parser_select="h264_decoder"
 hevc_parser_select="golomb"
 mpegvideo_parser_select="mpegvideo"
 mpeg4video_parser_select="h263dsp mpegvideo qpeldsp"
-vc1_parser_select="mpegvideo startcode vc1_decoder"
+vc1_parser_select="vc1dsp"
 
 # bitstream_filters
 mjpeg2jpeg_bsf_select="jpegtables"
@@ -2672,11 +2681,11 @@ asf_demuxer_select="riffdec"
 asf_o_demuxer_select="riffdec"
 asf_muxer_select="riffenc"
 asf_stream_muxer_select="asf_muxer"
-avi_demuxer_select="riffdec exif"
+avi_demuxer_select="iso_media riffdec exif"
 avi_muxer_select="riffenc"
 avisynth_demuxer_deps="avisynth"
 avisynth_demuxer_select="riffdec"
-caf_demuxer_select="riffdec"
+caf_demuxer_select="iso_media riffdec"
 dash_muxer_select="mp4_muxer"
 dirac_demuxer_select="dirac_parser"
 dts_demuxer_select="dca_parser"
@@ -2696,15 +2705,16 @@ ismv_muxer_select="mov_muxer"
 libnut_demuxer_deps="libnut"
 libnut_muxer_deps="libnut"
 matroska_audio_muxer_select="matroska_muxer"
-matroska_demuxer_select="riffdec"
+matroska_demuxer_select="iso_media riffdec"
 matroska_demuxer_suggest="bzlib lzo zlib"
-matroska_muxer_select="riffenc"
+matroska_muxer_select="iso_media riffenc"
 mmf_muxer_select="riffenc"
-mov_demuxer_select="riffdec"
+mov_demuxer_select="iso_media riffdec"
 mov_demuxer_suggest="zlib"
-mov_muxer_select="riffenc rtpenc_chain"
+mov_muxer_select="iso_media riffenc rtpenc_chain"
 mp3_demuxer_select="mpegaudio_parser"
 mp4_muxer_select="mov_muxer"
+mpegts_demuxer_select="iso_media"
 mpegts_muxer_select="adts_muxer latm_muxer"
 mpegtsraw_demuxer_select="mpegts_demuxer"
 mxf_d10_muxer_select="mxf_muxer"
@@ -2734,9 +2744,10 @@ w64_demuxer_select="wav_demuxer"
 w64_muxer_select="wav_muxer"
 wav_demuxer_select="riffdec"
 wav_muxer_select="riffenc"
-webm_muxer_select="riffenc"
-wtv_demuxer_select="riffdec"
-wtv_muxer_select="riffenc"
+webm_muxer_select="iso_media riffenc"
+webm_dash_manifest_demuxer_select="matroska_demuxer"
+wtv_demuxer_select="mpegts_demuxer riffdec"
+wtv_muxer_select="mpegts_muxer riffenc"
 xmv_demuxer_select="riffdec"
 xwma_demuxer_select="riffdec"
 
@@ -2761,7 +2772,8 @@ gdigrab_indev_deps="CreateDIBSection"
 gdigrab_indev_extralibs="-lgdi32"
 gdigrab_indev_select="bmp_decoder"
 iec61883_indev_deps="libiec61883"
-jack_indev_deps="jack_jack_h sem_timedwait"
+jack_indev_deps="jack_jack_h"
+jack_indev_deps_any="sem_timedwait dispatch_dispatch_h"
 lavfi_indev_deps="avfilter"
 libcdio_indev_deps="libcdio"
 libdc1394_indev_deps="libdc1394"
@@ -2861,6 +2873,8 @@ eq_filter_deps="gpl"
 fftfilt_filter_deps="avcodec"
 fftfilt_filter_select="rdft"
 find_rect_filter_deps="avcodec avformat gpl"
+firequalizer_filter_deps="avcodec"
+firequalizer_filter_select="rdft"
 flite_filter_deps="libflite"
 frei0r_filter_deps="frei0r dlopen"
 frei0r_src_filter_deps="frei0r dlopen"
@@ -2868,6 +2882,7 @@ fspp_filter_deps="gpl"
 geq_filter_deps="gpl"
 histeq_filter_deps="gpl"
 hqdn3d_filter_deps="gpl"
+hwupload_cuda_filter_deps="cuda"
 interlace_filter_deps="gpl"
 kerndeint_filter_deps="gpl"
 ladspa_filter_deps="ladspa dlopen"
@@ -3299,43 +3314,37 @@ set >> $logfile
 test -n "$valgrind" && toolchain="valgrind-memcheck"
 
 case "$toolchain" in
-    clang-asan)
-        cc_default="clang"
+    *-asan)
+        cc_default="${toolchain%-asan}"
         add_cflags  -fsanitize=address
         add_ldflags -fsanitize=address
     ;;
-    clang-tsan)
-        cc_default="clang"
+    *-tsan)
+        cc_default="${toolchain%-tsan}"
         add_cflags  -fsanitize=thread -pie
         add_ldflags -fsanitize=thread -pie
+        case "$toolchain" in
+            gcc-tsan)
+                add_cflags  -fPIC
+                add_ldflags -fPIC
+                ;;
+        esac
     ;;
-    clang-usan)
-        cc_default="clang"
+    *-usan)
+        cc_default="${toolchain%-usan}"
         add_cflags  -fsanitize=undefined
         add_ldflags -fsanitize=undefined
     ;;
-    gcc-asan)
-        cc_default="gcc"
-        add_cflags  -fsanitize=address
-        add_ldflags -fsanitize=address
-    ;;
-    gcc-tsan)
-        cc_default="gcc"
-        add_cflags  -fsanitize=thread -pie -fPIC
-        add_ldflags -fsanitize=thread -pie -fPIC
-    ;;
-    gcc-usan)
-        cc_default="gcc"
-        add_cflags  -fsanitize=undefined
-        add_ldflags -fsanitize=undefined
-    ;;
-    valgrind-massif)
-        target_exec_default=${valgrind:-"valgrind"}
-        target_exec_args="--tool=massif --alloc-fn=av_malloc --alloc-fn=av_mallocz --alloc-fn=av_calloc --alloc-fn=av_fast_padded_malloc --alloc-fn=av_fast_malloc --alloc-fn=av_realloc_f --alloc-fn=av_fast_realloc --alloc-fn=av_realloc"
-    ;;
-    valgrind-memcheck)
-        target_exec_default=${valgrind:-"valgrind"}
-        target_exec_args="--error-exitcode=1 --malloc-fill=0x2a --track-origins=yes --leak-check=full --gen-suppressions=all --suppressions=$source_path/tests/fate-valgrind.supp"
+    valgrind-*)
+        target_exec_default="valgrind"
+        case "$toolchain" in
+            valgrind-massif)
+                target_exec_args="--tool=massif --alloc-fn=av_malloc --alloc-fn=av_mallocz --alloc-fn=av_calloc --alloc-fn=av_fast_padded_malloc --alloc-fn=av_fast_malloc --alloc-fn=av_realloc_f --alloc-fn=av_fast_realloc --alloc-fn=av_realloc"
+                ;;
+            valgrind-memcheck)
+                target_exec_args="--error-exitcode=1 --malloc-fill=0x2a --track-origins=yes --leak-check=full --gen-suppressions=all --suppressions=$source_path/tests/fate-valgrind.supp"
+                ;;
+        esac
     ;;
     msvc)
         # Check whether the current MSVC version needs the C99 converter.
@@ -4254,8 +4263,8 @@ elif enabled mips; then
             esac
         ;;
         generic)
-            disable mips64r6
-            disable msa
+            # We do not disable anything. Is up to the user to disable
+            # the unwanted features.
         ;;
         *)
             # Unknown CPU. Disable everything.
@@ -4529,6 +4538,7 @@ case $target_os in
         enabled x86_64 && objformat="macho64"
         enabled_any pic shared x86_64 ||
             { check_cflags -mdynamic-no-pic && add_asflags -mdynamic-no-pic; }
+        check_header dispatch/dispatch.h
         ;;
     msys*)
         die "Native MSYS builds are discouraged, please use the MINGW environment.";
@@ -4888,6 +4898,7 @@ die_license_disabled gpl libxavs
 die_license_disabled gpl libxvid
 die_license_disabled gpl x11grab
 
+die_license_disabled nonfree cuda
 die_license_disabled nonfree libfaac
 die_license_disabled nonfree nvenc
 enabled gpl && die_license_disabled_gpl nonfree libfdk_aac
@@ -5079,27 +5090,92 @@ elif enabled mips; then
     enabled mmi && check_inline_asm mmi '"punpcklhw $f0, $f0, $f0"'
 
     # Enable minimum ISA based on selected options
-    if enabled mips64 && (enabled mipsdsp || enabled mipsdspr2); then
-        add_cflags "-mips64r2"
-        add_asflags "-mips64r2"
-    elif enabled mips64 && enabled mipsfpu && disabled loongson2 && disabled loongson3; then
-        add_cflags "-mips64"
-        add_asflags "-mips64"
-    elif enabled mipsdsp || enabled mipsdspr2; then
-        add_cflags "-mips32r2 -mfp32"
-        add_asflags "-mips32r2 -mfp32"
+    if enabled mips64; then
+        if enabled mips64r6; then
+            check_ldflags "-mips64r6" &&
+            add_cflags "-mips64r6" &&
+            add_asflags "-mips64r6" &&
+            check_inline_asm mips64r6 '"dlsa $0, $0, $0, 1"' ||
+            disable mips64r6
+        fi
+        if disabled mips64r6 && enabled mips64r2; then
+            check_ldflags "-mips64r2" &&
+            add_cflags "-mips64r2" &&
+            add_asflags "-mips64r2" &&
+            check_inline_asm mips64r2 '"dext $0, $0, 0, 1"' ||
+            disable mips64r2
+        fi
+        if disabled mips64r6 && disabled mips64r2; then
+            check_ldflags "-mips64" &&
+            add_cflags "-mips64" &&
+            add_asflags "-mips64" &&
+            check_inline_asm mips64r1 '"daddi $0, $0, 0"' ||
+            disable mips64r1
+        fi
+    else
+        if enabled mips32r6; then
+            check_ldflags "-mips32r6" &&
+            add_cflags "-mips32r6" &&
+            add_asflags "-mips32r6" &&
+            check_inline_asm mips32r6 '"aui $0, $0, 0"' ||
+            disable mips32r6
+        fi
+        if disabled mips32r6 && enabled mips32r2; then
+            check_ldflags "-mips32r2" &&
+            add_cflags "-mips32r2" &&
+            add_asflags "-mips32r2" &&
+            check_inline_asm mips32r2 '"ext $0, $0, 0, 1"' ||
+            disable mips32r2
+        fi
+        if disabled mips32r6 && disabled mips32r2; then
+            check_ldflags "-mips32" &&
+            add_cflags "-mips32" &&
+            add_asflags "-mips32" &&
+            check_inline_asm mips32r1 '"addi $0, $0, 0"' ||
+            disable mips32r1
+        fi
     fi
 
-    enabled mipsdsp && add_cflags "-mdsp" && add_asflags "-mdsp" &&
-     check_inline_asm mipsdsp '"addu.qb $t0, $t1, $t2"'
-    enabled mipsdspr2 && add_cflags "-mdspr2" && add_asflags "-mdspr2" &&
-     check_inline_asm mipsdspr2 '"absq_s.qb $t0, $t1"'
-    enabled mipsfpu   && add_cflags "-mhard-float" && add_asflags "-mhard-float" &&
-     check_inline_asm mipsfpu   '"madd.d $f0, $f2, $f4, $f6"'
-    enabled msa       && check_cflags "-mmsa" && check_ldflags "-mmsa" &&
-     check_inline_asm msa       '"addvi.b $w0, $w1, 1"'
+    # MIPS FPU
+    if enabled mipsfpu; then
+        check_ldflags "-mhard-float" &&
+        add_cflags "-mhard-float" &&
+        add_asflags "-mhard-float" &&
+        check_inline_asm mipsfpu '"cvt.d.l $f0, $f2"' ||
+        disable mipsfpu
+    fi
 
-    enabled msa && add_asflags "-mmsa"
+    # MSA and DSP support require ISA revision level 2 or greater
+    if enabled mips32r2 || enabled mips64r2 || enabled mips32r6 || enabled mips64r6; then
+        # MSA must be used with -mfp64 and -mhard-float
+        if enabled mipsfpu; then
+            if enabled msa; then
+                check_ldflags "-mfp64 -mmsa" &&
+                add_cflags "-mfp64 -mmsa" &&
+                add_asflags "-mfp64 -mmsa" &&
+                check_inline_asm msa '"addvi.b $w0, $w1, 1"' &&
+                check_header msa.h ||
+                disable msa
+            fi
+        else
+            disable msa
+        fi
+
+        if enabled mipsdsp; then
+            check_ldflags "-mdsp" &&
+            add_cflags "-mdsp" &&
+            add_asflags "-mdsp" &&
+            check_inline_asm mipsdsp '"addu.qb $t0, $t1, $t2"' ||
+            disable mipsdsp
+        fi
+        if enabled mipsdspr2; then
+            check_ldflags "-mdspr2" &&
+            add_cflags "-mdspr2" &&
+            add_asflags "-mdspr2" &&
+            check_inline_asm mipsdspr2 '"absq_s.qb $t0, $t1"' ||
+            disable mipsdspr2
+        fi
+    fi
 
 elif enabled parisc; then
 
@@ -5278,6 +5354,7 @@ check_builtin atomic_compare_exchange "" "int *ptr, *oldval; int newval; __atomi
 check_builtin machine_rw_barrier mbarrier.h "__machine_rw_barrier()"
 check_builtin MemoryBarrier windows.h "MemoryBarrier()"
 check_builtin sarestart signal.h "SA_RESTART"
+check_builtin sem_timedwait semaphore.h "sem_t *s; sem_init(s,0,0); sem_timedwait(s,0); sem_destroy(s)" -lpthread
 check_builtin sync_val_compare_and_swap "" "int *ptr; int oldval, newval; __sync_val_compare_and_swap(ptr, oldval, newval)"
 check_builtin gmtime_r time.h "time_t *time; struct tm *tm; gmtime_r(time, tm)"
 check_builtin localtime_r time.h "time_t *time; struct tm *tm; localtime_r(time, tm)"
@@ -5456,6 +5533,7 @@ enabled avfoundation_indev && { check_lib2 CoreGraphics/CoreGraphics.h CGGetActi
 enabled avisynth          && { { check_lib2 "windows.h" LoadLibrary; } ||
                                { check_lib2 "dlfcn.h" dlopen -ldl; } ||
                                die "ERROR: LoadLibrary/dlopen not found for avisynth"; }
+enabled cuda              && check_lib cuda.h cuInit -lcuda
 enabled chromaprint       && require chromaprint chromaprint.h chromaprint_get_version -lchromaprint
 enabled decklink          && { check_header DeckLinkAPI.h || die "ERROR: DeckLinkAPI.h header not found"; }
 enabled frei0r            && { check_header frei0r.h || die "ERROR: frei0r.h header not found"; }
@@ -5715,7 +5793,7 @@ check_header soundcard.h
 enabled_any alsa_indev alsa_outdev &&
     check_lib2 alsa/asoundlib.h snd_pcm_htimestamp -lasound
 
-enabled jack_indev && check_lib2 jack/jack.h jack_client_open -ljack && check_func sem_timedwait &&
+enabled jack_indev && check_lib2 jack/jack.h jack_client_open -ljack &&
     check_func jack_port_get_latency_range -ljack
 
 enabled_any sndio_indev sndio_outdev && check_lib2 sndio.h sio_open -lsndio
@@ -6244,6 +6322,10 @@ echo
 
 echo "External libraries:"
 print_enabled '' $EXTERNAL_LIBRARY_LIST | print_in_columns
+echo
+
+echo "Libraries:"
+print_enabled '' $LIBRARY_LIST | print_in_columns
 echo
 
 for type in decoder encoder hwaccel parser demuxer muxer protocol filter bsf indev outdev; do
