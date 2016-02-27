@@ -376,7 +376,6 @@ static SDL_Surface *screen;
 static int osd = 1;           // show osd. 1:osd on, 0:osd off. modified by Coffey 20150109
 static int autoscale = 1;     // auto scaling to window size to avoid jaggy. modified by Coffey 20150121
 static int toggle_adisp = 1;  // control toggle audio display. 1:default(same as old code), 0:stop audio toggle. modified by coffey 20141215
-static int bt709mpeg = 1;     // color matrix and range for video rendering. 1:use bt709+limited range, 0:same as original ffplay. modified by coffey 20141215
 
 #define OSD_POSITION_BAR_HEIGHT  32
 
@@ -2285,12 +2284,6 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
         }
     }
 
-    if (bt709mpeg) {
-        // input video is assumed bt709 colormatrix and limited range (mpeg) yuv
-        INSERT_FILT("yuvrangeconv", "full");        // 20141220 modified by coffey
-        INSERT_FILT("colormatrix", "bt709:bt601");  // 20141220 modified by coffey
-    }
-
     if ((ret = configure_filtergraph(graph, vfilters, filt_src, last_filter)) < 0)
         goto fail;
 
@@ -4190,7 +4183,6 @@ static const OptionDef options[] = {
     { "osd", OPT_BOOL | OPT_EXPERT, { &osd }, "show osd", "" },  // modified by Coffey 20150109
     { "autoscale", OPT_BOOL | OPT_EXPERT, { &autoscale }, "auto scaling to current window size", "" },  // modified by Coffey 20150121
     { "toggle_adisp", OPT_BOOL | OPT_EXPERT, { &toggle_adisp }, "toggle audio display", "" },  // modified by coffey 20141225
-    { "bt709mpeg", OPT_BOOL | OPT_EXPERT, { &bt709mpeg }, "force rendering by bt709 colormatrix and mpeg limited range", "" },  // modified by coffey 20141225
     { NULL, },
 };
 
