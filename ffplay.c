@@ -2085,7 +2085,7 @@ static int queue_picture(VideoState *is, AVFrame *src_frame, double pts, double 
 
         is->img_convert_ctx = sws_getCachedContext(is->img_convert_ctx,
             vp->width, vp->height, src_frame->format, vp->width, vp->height,
-            AV_PIX_FMT_YUV420P, sws_flags, NULL, NULL, NULL);
+            AV_PIX_FMT_YUVJ420P, sws_flags, NULL, NULL, NULL);
         if (!is->img_convert_ctx) {
             av_log(NULL, AV_LOG_FATAL, "Cannot initialize the conversion context\n");
             exit(1);
@@ -2191,7 +2191,7 @@ fail:
 
 static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const char *vfilters, AVFrame *frame)
 {
-    static const enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE };
+    static const enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_NONE };
     char sws_flags_str[512] = "";
     char buffersrc_args[256];
     int ret;
@@ -2281,6 +2281,14 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
             char rotate_buf[64];
             snprintf(rotate_buf, sizeof(rotate_buf), "%f*PI/180", theta);
             INSERT_FILT("rotate", rotate_buf);
+        }
+    }
+
+    {
+        enum AVColorSpace colorspace = av_frame_get_colorspace(frame);
+        
+        if (colorspace == AVCOL_SPC_BT709) {
+            INSERT_FILT("colormatrix", "bt709:bt601");
         }
     }
 
