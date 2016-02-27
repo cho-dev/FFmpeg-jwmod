@@ -339,6 +339,17 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
         SET_META( SHOWINFO_META_KEY_PREFIX"FIELD_TYPE.L", "%s", frame->top_field_first ? "TFF" : "BFF");
         SET_META( SHOWINFO_META_KEY_PREFIX"PICT_TYPE",    "%c", av_get_picture_type_char(frame->pict_type));
         SET_META( SHOWINFO_META_KEY_PREFIX"COLOR_RANGE",  "%d", av_frame_get_color_range(frame));
+        {
+            enum AVColorSpace colorspace = av_frame_get_colorspace(frame);
+            const char *name = av_get_colorspace_name(colorspace);
+            
+            SET_META( SHOWINFO_META_KEY_PREFIX"COLORSPACE", "%d", colorspace);
+            if (name) {
+                SET_META( SHOWINFO_META_KEY_PREFIX"COLORSPACE.NAME", "%s", name);
+            } else {
+                SET_META( SHOWINFO_META_KEY_PREFIX"COLORSPACE.NAME", "%s", "(unspecified)");
+            }
+        }
         
         for (plane = 0; plane < 4 && frame->data[plane] && frame->linesize[plane]; plane++) {
             int64_t mean;
