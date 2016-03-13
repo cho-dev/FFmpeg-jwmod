@@ -301,7 +301,7 @@ static int open_file(AVFormatContext *avf, unsigned fileno)
 
     cat->avf->interrupt_callback = avf->interrupt_callback;
 
-    if ((ret = ff_copy_whitelists(cat->avf, avf)) < 0)
+    if ((ret = ff_copy_whiteblacklists(cat->avf, avf)) < 0)
         return ret;
 
     if ((ret = avformat_open_input(&cat->avf, file->url, NULL, NULL)) < 0 ||
@@ -710,7 +710,7 @@ static int concat_seek(AVFormatContext *avf, int stream,
 
 static const AVOption options[] = {
     { "safe", "enable safe mode",
-      OFFSET(safe), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, DEC },
+      OFFSET(safe), AV_OPT_TYPE_BOOL, {.i64 = 1}, -1, 1, DEC },
     { "auto_convert", "automatically convert bitstream format",
       OFFSET(auto_convert), AV_OPT_TYPE_BOOL, {.i64 = 1}, 0, 1, DEC },
     { "segment_time_metadata", "output file segment start time and duration as packet metadata",

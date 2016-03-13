@@ -853,6 +853,30 @@ int ff_decode_frame_props(AVCodecContext *avctx, AVFrame *frame)
     return ff_init_buffer_info(avctx, frame);
 }
 
+static void validate_avframe_allocation(AVCodecContext *avctx, AVFrame *frame)
+{
+    if (avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
+        int i;
+        int num_planes = av_pix_fmt_count_planes(frame->format);
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format);
+        int flags = desc ? desc->flags : 0;
+        if (num_planes == 1 && (flags & AV_PIX_FMT_FLAG_PAL))
+            num_planes = 2;
+        for (i = 0; i < num_planes; i++) {
+            av_assert0(frame->data[i]);
+        }
+        // For now do not enforce anything for palette of pseudopal formats
+        if (num_planes == 1 && (flags & AV_PIX_FMT_FLAG_PSEUDOPAL))
+            num_planes = 2;
+        // For formats without data like hwaccel allow unused pointers to be non-NULL.
+        for (i = num_planes; num_planes > 0 && i < FF_ARRAY_ELEMS(frame->data); i++) {
+            if (frame->data[i])
+                av_log(avctx, AV_LOG_ERROR, "Buffer returned by get_buffer2() did not zero unused plane pointers\n");
+            frame->data[i] = NULL;
+        }
+    }
+}
+
 static int get_buffer_internal(AVCodecContext *avctx, AVFrame *frame, int flags)
 {
     const AVHWAccel *hwaccel = avctx->hwaccel;
@@ -889,6 +913,8 @@ static int get_buffer_internal(AVCodecContext *avctx, AVFrame *frame, int flags)
         avctx->sw_pix_fmt = avctx->pix_fmt;
 
     ret = avctx->get_buffer2(avctx, frame, flags);
+    if (ret >= 0)
+        validate_avframe_allocation(avctx, frame);
 
 end:
     if (avctx->codec_type == AVMEDIA_TYPE_VIDEO && !override_dimensions) {
@@ -2460,7 +2486,7 @@ static int convert_sub_to_old_ass_form(AVSubtitle *sub, const AVPacket *pkt, AVR
         int ts_start, ts_duration = -1;
         long int layer;
 
-        if (rect->type != SUBTITLE_ASS || !strncmp(rect->ass, "Dialogue ", 10))
+        if (rect->type != SUBTITLE_ASS || !strncmp(rect->ass, "Dialogue: ", 10))
             continue;
 
         av_bprint_clear(&buf);
@@ -2491,6 +2517,7 @@ static int convert_sub_to_old_ass_form(AVSubtitle *sub, const AVPacket *pkt, AVR
 
         final_dialog = av_strdup(buf.str);
         if (!av_bprint_is_complete(&buf) || !final_dialog) {
+            av_freep(&final_dialog);
             av_bprint_finalize(&buf, NULL);
             return AVERROR(ENOMEM);
         }
@@ -3653,3 +3680,23 @@ AVCPBProperties *ff_add_cpb_side_data(AVCodecContext *avctx)
 
     return props;
 }
+
+#ifdef TEST
+int main(void){
+    AVCodec *codec = NULL;
+    int ret = 0;
+    avcodec_register_all();
+
+    while (codec = av_codec_next(codec)) {
+        if (av_codec_is_encoder(codec)) {
+            if (codec->type == AVMEDIA_TYPE_AUDIO) {
+                if (!codec->sample_fmts) {
+                    av_log(NULL, AV_LOG_FATAL, "Encoder %s is missing the sample_fmts field\n", codec->name);
+                    ret = 1;
+                }
+            }
+        }
+    }
+    return ret;
+}
+#endif /* TEST */

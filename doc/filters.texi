@@ -4553,6 +4553,61 @@ ffmpeg -f lavfi -i color=c=black:s=1280x720 -i video.mp4 -shortest -filter_compl
 @end example
 @end itemize
 
+@section ciescope
+
+Display CIE color diagram with pixels overlaid onto it.
+
+The filter acccepts the following options:
+
+@table @option
+@item system
+Set color system.
+
+@table @samp
+@item ntsc, 470m
+@item ebu, 470bg
+@item smpte
+@item 240m
+@item apple
+@item widergb
+@item cie1931
+@item rec709, hdtv
+@item uhdtv, rec2020
+@end table
+
+@item cie
+Set CIE system.
+
+@table @samp
+@item xyy
+@item ucs
+@item luv
+@end table
+
+@item gamuts
+Set what gamuts to draw.
+
+See @code{system} option for avaiable values.
+
+@item size, s
+Set ciescope size, by default set to 512.
+
+@item intensity, i
+Set intensity used to map input pixel values to CIE diagram.
+
+@item contrast
+Set contrast used to draw tongue colors that are out of active color system gamut.
+
+@item corrgamma
+Correct gamma displayed on scope, by default enabled.
+
+@item showwhite
+Show white point on CIE diagram, by default disabled.
+
+@item gamma
+Set input gamma. Used only with XYZ input color space.
+@end table
+
 @section codecview
 
 Visualize information exported by some codecs.
@@ -10874,6 +10929,7 @@ Scale a subtitle stream to match the main video in size before overlaying
 @end example
 @end itemize
 
+@anchor{selectivecolor}
 @section selectivecolor
 
 Adjust cyan, magenta, yellow and black (CMYK) to certain ranges of colors (such
@@ -12513,7 +12569,7 @@ same component color value on location in graph. This is the default mode.
 @item color
 Gray values are displayed on graph. Surrounding pixels values which are not
 present in video frame are drawn in gradient of 2 color components which are
-set by option @code{x} and @code{y}.
+set by option @code{x} and @code{y}. The 3rd color component is static.
 
 @item color2
 Actual color components values present in video frame are displayed on graph.
@@ -12527,6 +12583,10 @@ default values of @code{x} and @code{y}.
 Actual colors present in video frame are displayed on graph. If two different
 colors map to same position on graph then color with higher value of component
 not present in graph is picked.
+
+@item color5
+Gray values are displayed on graph. Similar to @code{color} but with 3rd color
+component picked from radial gradient.
 @end table
 
 @item x
@@ -12536,7 +12596,7 @@ Set which color component will be represented on X-axis. Default is @code{1}.
 Set which color component will be represented on Y-axis. Default is @code{2}.
 
 @item intensity, i
-Set intensity, used by modes: gray, color and color3 for increasing brightness
+Set intensity, used by modes: gray, color, color3 and color5 for increasing brightness
 of color component which represents frequency of (X, Y) location in graph.
 
 @item envelope, e
@@ -12554,6 +12614,57 @@ can still spot out of range values without constantly looking at vectorscope.
 @item peak+instant
 Peak and instant envelope combined together.
 @end table
+
+@item graticule, g
+Set what kind of graticule to draw.
+@table @samp
+@item none
+@item green
+@item color
+@end table
+
+@item opacity, o
+Set graticule opacity.
+
+@item flags, f
+Set graticule flags.
+
+@table @samp
+@item white
+Draw graticule for white point.
+
+@item black
+Draw graticule for black point.
+
+@item name
+Draw color points short names.
+@end table
+
+@item bgopacity, b
+Set background opacity.
+
+@item lthreshold, l
+Set low threshold for color component not represented on X or Y axis.
+Values lower than this value will be ignored. Default is 0.
+Note this value is multiplied with actual max possible value one pixel component
+can have. So for 8-bit input and low threshold value of 0.1 actual threshold
+is 0.1 * 255 = 25.
+
+@item hthreshold, h
+Set high threshold for color component not represented on X or Y axis.
+Values higher than this value will be ignored. Default is 1.
+Note this value is multiplied with actual max possible value one pixel component
+can have. So for 8-bit input and high threshold value of 0.9 actual threshold
+is 0.9 * 255 = 230.
+
+@item colorspace, c
+Set what kind of colorspace to use when drawing graticule.
+@table @samp
+@item auto
+@item 601
+@item 709
+@end table
+Default is auto.
 @end table
 
 @anchor{vidstabdetect}
@@ -13007,9 +13118,13 @@ This display mode makes it easier to spot relative differences or similarities
 in overlapping areas of the color components that are supposed to be identical,
 such as neutral whites, grays, or blacks.
 
-@item parade
+@item stack
 Display separate graph for the color components side by side in
 @code{row} mode or one below the other in @code{column} mode.
+
+@item parade
+Display separate graph for the color components side by side in
+@code{column} mode or one below the other in @code{row} mode.
 
 Using this display mode makes it easy to spot color casts in the highlights
 and shadows of an image, by comparing the contours of the top and the bottom
@@ -13018,7 +13133,7 @@ by exactly equal amounts of red, green, and blue, neutral areas of the picture
 should display three waveforms of roughly equal width/height. If not, the
 correction is easy to perform by making level adjustments the three waveforms.
 @end table
-Default is @code{parade}.
+Default is @code{stack}.
 
 @item components, c
 Set which color components to display. Default is 1, which means only luminance
@@ -13061,7 +13176,45 @@ Similar as above, but shows difference between blue and red chroma.
 
 @item color
 Displays actual color value on waveform.
+
+@item acolor
+Similar as above, but with luma showing frequency of chroma values.
 @end table
+
+@item graticule, g
+Set which graticule to display.
+
+@table @samp
+@item none
+Do not display graticule.
+
+@item green
+Display green graticule showing legal broadcast ranges.
+@end table
+
+@item opacity, o
+Set graticule opacity.
+
+@item flags, fl
+Set graticule flags.
+
+@table @samp
+@item numbers
+Draw numbers above lines. By default enabled.
+
+@item dots
+Draw dots instead of lines.
+@end table
+
+@item scale, s
+Set scale used for displaying graticule.
+
+@table @samp
+@item digital
+@item millivolts
+@item ire
+@end table
+Default is digital.
 @end table
 
 @section xbr
@@ -14282,6 +14435,40 @@ Complete example using @command{ffplay}:
 @example
 ffplay -f lavfi 'amovie=input.mp3, asplit [a][out1];
              [a] avectorscope=zoom=1.3:rc=2:gc=200:bc=10:rf=1:gf=8:bf=7 [out0]'
+@end example
+@end itemize
+
+@section bench, abench
+
+Benchmark part of a filtergraph.
+
+The filter accepts the following options:
+
+@table @option
+@item action
+Start or stop a timer.
+
+Available values are:
+@table @samp
+@item start
+Get the current time, set it as frame metadata (using the key
+@code{lavfi.bench.start_time}), and forward the frame to the next filter.
+
+@item stop
+Get the current time and fetch the @code{lavfi.bench.start_time} metadata from
+the input frame metadata to get the time difference. Time difference, average,
+maximum and minimum time (respectively @code{t}, @code{avg}, @code{max} and
+@code{min}) are then printed. The timestamps are expressed in seconds.
+@end table
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+Benchmark @ref{selectivecolor} filter:
+@example
+bench=start,selectivecolor=reds=-.2 .12 -.49,bench=stop
 @end example
 @end itemize
 

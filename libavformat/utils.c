@@ -33,6 +33,7 @@
 #include "libavutil/parseutils.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/time.h"
+#include "libavutil/time_internal.h"
 #include "libavutil/timestamp.h"
 
 #include "libavcodec/bytestream.h"
@@ -141,18 +142,21 @@ void av_format_inject_global_side_data(AVFormatContext *s)
     }
 }
 
-int ff_copy_whitelists(AVFormatContext *dst, AVFormatContext *src)
+int ff_copy_whiteblacklists(AVFormatContext *dst, AVFormatContext *src)
 {
     av_assert0(!dst->codec_whitelist &&
                !dst->format_whitelist &&
-               !dst->protocol_whitelist);
+               !dst->protocol_whitelist &&
+               !dst->protocol_blacklist);
     dst-> codec_whitelist = av_strdup(src->codec_whitelist);
     dst->format_whitelist = av_strdup(src->format_whitelist);
     dst->protocol_whitelist = av_strdup(src->protocol_whitelist);
+    dst->protocol_blacklist = av_strdup(src->protocol_blacklist);
     if (   (src-> codec_whitelist && !dst-> codec_whitelist)
         || (src->  format_whitelist && !dst->  format_whitelist)
-        || (src->protocol_whitelist && !dst->protocol_whitelist)) {
-        av_log(dst, AV_LOG_ERROR, "Failed to duplicate whitelist\n");
+        || (src->protocol_whitelist && !dst->protocol_whitelist)
+        || (src->protocol_blacklist && !dst->protocol_blacklist)) {
+        av_log(dst, AV_LOG_ERROR, "Failed to duplicate black/whitelist\n");
         return AVERROR(ENOMEM);
     }
     return 0;
@@ -293,6 +297,7 @@ static int set_codec_from_probe_data(AVFormatContext *s, AVStream *st,
         { "m4v",       AV_CODEC_ID_MPEG4,      AVMEDIA_TYPE_VIDEO },
         { "mp3",       AV_CODEC_ID_MP3,        AVMEDIA_TYPE_AUDIO },
         { "mpegvideo", AV_CODEC_ID_MPEG2VIDEO, AVMEDIA_TYPE_VIDEO },
+        { "truehd",    AV_CODEC_ID_TRUEHD,     AVMEDIA_TYPE_AUDIO },
         { 0 }
     };
     int score;
@@ -453,6 +458,14 @@ int avformat_open_input(AVFormatContext **ps, const char *filename,
     if (!s->protocol_whitelist && s->pb && s->pb->protocol_whitelist) {
         s->protocol_whitelist = av_strdup(s->pb->protocol_whitelist);
         if (!s->protocol_whitelist) {
+            ret = AVERROR(ENOMEM);
+            goto fail;
+        }
+    }
+
+    if (!s->protocol_blacklist && s->pb && s->pb->protocol_blacklist) {
+        s->protocol_blacklist = av_strdup(s->pb->protocol_blacklist);
+        if (!s->protocol_blacklist) {
             ret = AVERROR(ENOMEM);
             goto fail;
         }
@@ -923,14 +936,44 @@ static int64_t select_from_pts_buffer(AVStream *st, int64_t *pts_buffer, int64_t
     return dts;
 }
 
+/**
+ * Updates the dts of packets of a stream in pkt_buffer, by re-ordering the pts
+ * of the packets in a window.
+ */
+static void update_dts_from_pts(AVFormatContext *s, int stream_index,
+                                AVPacketList *pkt_buffer)
+{
+    AVStream *st       = s->streams[stream_index];
+    int delay          = st->codec->has_b_frames;
+    int i;
+
+    int64_t pts_buffer[MAX_REORDER_DELAY+1];
+
+    for (i = 0; i<MAX_REORDER_DELAY+1; i++)
+        pts_buffer[i] = AV_NOPTS_VALUE;
+
+    for (; pkt_buffer; pkt_buffer = get_next_pkt(s, st, pkt_buffer)) {
+        if (pkt_buffer->pkt.stream_index != stream_index)
+            continue;
+
+        if (pkt_buffer->pkt.pts != AV_NOPTS_VALUE && delay <= MAX_REORDER_DELAY) {
+            pts_buffer[0] = pkt_buffer->pkt.pts;
+            for (i = 0; i<delay && pts_buffer[i] > pts_buffer[i + 1]; i++)
+                FFSWAP(int64_t, pts_buffer[i], pts_buffer[i + 1]);
+
+            pkt_buffer->pkt.dts = select_from_pts_buffer(st, pts_buffer, pkt_buffer->pkt.dts);
+        }
+    }
+}
+
 static void update_initial_timestamps(AVFormatContext *s, int stream_index,
                                       int64_t dts, int64_t pts, AVPacket *pkt)
 {
     AVStream *st       = s->streams[stream_index];
     AVPacketList *pktl = s->internal->packet_buffer ? s->internal->packet_buffer : s->internal->parse_queue;
-    int64_t pts_buffer[MAX_REORDER_DELAY+1];
+    AVPacketList *pktl_it;
+
     uint64_t shift;
-    int i, delay;
 
     if (st->first_dts != AV_NOPTS_VALUE ||
         dts           == AV_NOPTS_VALUE ||
@@ -938,36 +981,28 @@ static void update_initial_timestamps(AVFormatContext *s, int stream_index,
         is_relative(dts))
         return;
 
-    delay         = st->codec->has_b_frames;
     st->first_dts = dts - (st->cur_dts - RELATIVE_TS_BASE);
     st->cur_dts   = dts;
     shift         = (uint64_t)st->first_dts - RELATIVE_TS_BASE;
 
-    for (i = 0; i<MAX_REORDER_DELAY+1; i++)
-        pts_buffer[i] = AV_NOPTS_VALUE;
-
     if (is_relative(pts))
         pts += shift;
 
-    for (; pktl; pktl = get_next_pkt(s, st, pktl)) {
-        if (pktl->pkt.stream_index != stream_index)
+    for (pktl_it = pktl; pktl_it; pktl_it = get_next_pkt(s, st, pktl_it)) {
+        if (pktl_it->pkt.stream_index != stream_index)
             continue;
-        if (is_relative(pktl->pkt.pts))
-            pktl->pkt.pts += shift;
+        if (is_relative(pktl_it->pkt.pts))
+            pktl_it->pkt.pts += shift;
 
-        if (is_relative(pktl->pkt.dts))
-            pktl->pkt.dts += shift;
+        if (is_relative(pktl_it->pkt.dts))
+            pktl_it->pkt.dts += shift;
 
-        if (st->start_time == AV_NOPTS_VALUE && pktl->pkt.pts != AV_NOPTS_VALUE)
-            st->start_time = pktl->pkt.pts;
+        if (st->start_time == AV_NOPTS_VALUE && pktl_it->pkt.pts != AV_NOPTS_VALUE)
+            st->start_time = pktl_it->pkt.pts;
+    }
 
-        if (pktl->pkt.pts != AV_NOPTS_VALUE && delay <= MAX_REORDER_DELAY && has_decode_delay_been_guessed(st)) {
-            pts_buffer[0] = pktl->pkt.pts;
-            for (i = 0; i<delay && pts_buffer[i] > pts_buffer[i + 1]; i++)
-                FFSWAP(int64_t, pts_buffer[i], pts_buffer[i + 1]);
-
-            pktl->pkt.dts = select_from_pts_buffer(st, pts_buffer, pktl->pkt.dts);
-        }
+    if (has_decode_delay_been_guessed(st)) {
+        update_dts_from_pts(s, stream_index, pktl);
     }
 
     if (st->start_time == AV_NOPTS_VALUE)
@@ -1187,12 +1222,13 @@ static void compute_pkt_fields(AVFormatContext *s, AVStream *st,
         }
     }
 
-    if (pkt->pts != AV_NOPTS_VALUE && delay <= MAX_REORDER_DELAY && has_decode_delay_been_guessed(st)) {
+    if (pkt->pts != AV_NOPTS_VALUE && delay <= MAX_REORDER_DELAY) {
         st->pts_buffer[0] = pkt->pts;
         for (i = 0; i<delay && st->pts_buffer[i] > st->pts_buffer[i + 1]; i++)
             FFSWAP(int64_t, st->pts_buffer[i], st->pts_buffer[i + 1]);
 
-        pkt->dts = select_from_pts_buffer(st, st->pts_buffer, pkt->dts);
+        if(has_decode_delay_been_guessed(st))
+            pkt->dts = select_from_pts_buffer(st, st->pts_buffer, pkt->dts);
     }
     // We skipped it above so we try here.
     if (!onein_oneout)
@@ -3095,7 +3131,8 @@ void ff_rfps_calculate(AVFormatContext *ic)
             for (j= 0; j<MAX_STD_TIMEBASES; j++) {
                 int k;
 
-                if (st->info->codec_info_duration && st->info->codec_info_duration*av_q2d(st->time_base) < (1001*12.0)/get_std_framerate(j))
+                if (st->info->codec_info_duration &&
+                    st->info->codec_info_duration*av_q2d(st->time_base) < (1001*11.5)/get_std_framerate(j))
                     continue;
                 if (!st->info->codec_info_duration && get_std_framerate(j) < 1001*12)
                     continue;
@@ -3151,6 +3188,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
     int64_t max_stream_analyze_duration;
     int64_t max_subtitle_analyze_duration;
     int64_t probesize = ic->probesize;
+    int eof_reached = 0;
 
     flush_codecs = probesize > 0;
 
@@ -3317,6 +3355,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
 
         if (ret < 0) {
             /* EOF or error*/
+            eof_reached = 1;
             break;
         }
 
@@ -3438,6 +3477,17 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
 
         st->codec_info_nb_frames++;
         count++;
+    }
+
+    if (eof_reached && ic->internal->packet_buffer) {
+        int stream_index;
+        for (stream_index = 0; stream_index < ic->nb_streams; stream_index++) {
+            // EOF already reached while reading the stream above.
+            // So continue with reoordering DTS with whatever delay we have.
+            if (!has_decode_delay_been_guessed(st)) {
+                update_dts_from_pts(ic, stream_index, ic->internal->packet_buffer);
+            }
+        }
     }
 
     if (flush_codecs) {
@@ -4695,6 +4745,11 @@ int av_apply_bitstream_filters(AVCodecContext *codec, AVPacket *pkt,
                                            &new_pkt.data, &new_pkt.size,
                                            pkt->data, pkt->size,
                                            pkt->flags & AV_PKT_FLAG_KEY);
+        if (a == 0 && new_pkt.size == 0 && new_pkt.side_data_elems == 0) {
+            av_packet_unref(pkt);
+            memset(pkt, 0, sizeof(*pkt));
+            return 0;
+        }
         if(a == 0 && new_pkt.data != pkt->data) {
             uint8_t *t = av_malloc(new_pkt.size + AV_INPUT_BUFFER_PADDING_SIZE); //the new should be a subset of the old so cannot overflow
             if (t) {
@@ -4755,5 +4810,51 @@ int ff_parse_creation_time_metadata(AVFormatContext *s, int64_t *timestamp, int 
             return ret;
         }
     }
+    return 0;
+}
+
+int ff_standardize_creation_time(AVFormatContext *s)
+{
+    int64_t timestamp;
+    int ret = ff_parse_creation_time_metadata(s, &timestamp, 0);
+    if (ret == 1) {
+        time_t seconds = timestamp / 1000000;
+        struct tm *ptm, tmbuf;
+        ptm = gmtime_r(&seconds, &tmbuf);
+        if (ptm) {
+            char buf[32];
+            if (!strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", ptm))
+                return AVERROR_EXTERNAL;
+            av_strlcatf(buf, sizeof(buf), ".%06dZ", (int)(timestamp % 1000000));
+            av_dict_set(&s->metadata, "creation_time", buf, 0);
+        } else {
+            return AVERROR_EXTERNAL;
+        }
+    }
+    return ret;
+}
+
+int ff_get_packet_palette(AVFormatContext *s, AVPacket *pkt, int ret, uint32_t *palette)
+{
+    uint8_t *side_data;
+    int size;
+
+    side_data = av_packet_get_side_data(pkt, AV_PKT_DATA_PALETTE, &size);
+    if (side_data) {
+        if (size != AVPALETTE_SIZE) {
+            av_log(s, AV_LOG_ERROR, "Invalid palette side data\n");
+            return AVERROR_INVALIDDATA;
+        }
+        memcpy(palette, side_data, AVPALETTE_SIZE);
+        return 1;
+    }
+
+    if (ret == CONTAINS_PAL) {
+        int i;
+        for (i = 0; i < AVPALETTE_COUNT; i++)
+            palette[i] = AV_RL32(pkt->data + pkt->size - AVPALETTE_SIZE + i*4);
+        return 1;
+    }
+
     return 0;
 }

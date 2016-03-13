@@ -33,6 +33,7 @@
 #include "avio_internal.h"
 #include "internal.h"
 #include "img2.h"
+#include "libavcodec/mjpeg.h"
 
 #if HAVE_GLOB
 /* Locally define as 0 (bitwise-OR no-op) any missing glob options that
@@ -687,7 +688,7 @@ static int j2k_probe(AVProbeData *p)
 static int jpeg_probe(AVProbeData *p)
 {
     const uint8_t *b = p->buf;
-    int i, state = 0xD8;
+    int i, state = SOI;
 
     if (AV_RB16(b) != 0xFFD8 ||
         AV_RB32(b) == 0xFFD8FFF7)
@@ -700,56 +701,57 @@ static int jpeg_probe(AVProbeData *p)
             continue;
         c = b[i + 1];
         switch (c) {
-        case 0xD8:
+        case SOI:
             return 0;
-        case 0xC0:
-        case 0xC1:
-        case 0xC2:
-        case 0xC3:
-        case 0xC5:
-        case 0xC6:
-        case 0xC7:
+        case SOF0:
+        case SOF1:
+        case SOF2:
+        case SOF3:
+        case SOF5:
+        case SOF6:
+        case SOF7:
             i += AV_RB16(&b[i + 2]) + 1;
-            if (state != 0xD8)
+            if (state != SOI)
                 return 0;
-            state = 0xC0;
+            state = SOF0;
             break;
-        case 0xDA:
-            if (state != 0xC0 && state != 0xDA)
+        case SOS:
+            i += AV_RB16(&b[i + 2]) + 1;
+            if (state != SOF0 && state != SOS)
                 return 0;
-            state = 0xDA;
+            state = SOS;
             break;
-        case 0xD9:
-            if (state != 0xDA)
+        case EOI:
+            if (state != SOS)
                 return 0;
-            state = 0xD9;
+            state = EOI;
             break;
-        case 0xE0:
-        case 0xE1:
-        case 0xE2:
-        case 0xE3:
-        case 0xE4:
-        case 0xE5:
-        case 0xE6:
-        case 0xE7:
-        case 0xE8:
-        case 0xE9:
-        case 0xEA:
-        case 0xEB:
-        case 0xEC:
-        case 0xED:
-        case 0xEE:
-        case 0xEF:
+        case APP0:
+        case APP1:
+        case APP2:
+        case APP3:
+        case APP4:
+        case APP5:
+        case APP6:
+        case APP7:
+        case APP8:
+        case APP9:
+        case APP10:
+        case APP11:
+        case APP12:
+        case APP13:
+        case APP14:
+        case APP15:
             i += AV_RB16(&b[i + 2]) + 1;
             break;
         default:
-            if (  (c >= 0x02 && c <= 0xBF)
-                || c == 0xC8)
+            if (  (c > TEM && c < SOF0)
+                || c == JPG)
                 return 0;
         }
     }
 
-    if (state == 0xD9)
+    if (state == EOI)
         return AVPROBE_SCORE_EXTENSION + 1;
     return AVPROBE_SCORE_EXTENSION / 8;
 }
@@ -761,6 +763,27 @@ static int jpegls_probe(AVProbeData *p)
     if (AV_RB32(b) == 0xffd8fff7)
          return AVPROBE_SCORE_EXTENSION + 1;
     return 0;
+}
+
+static int pcx_probe(AVProbeData *p)
+{
+    const uint8_t *b = p->buf;
+
+    if (   p->buf_size < 128
+        || b[0] != 10
+        || b[1] > 5
+        || b[2] != 1
+        || av_popcount(b[3]) != 1 || b[3] > 8
+        || AV_RL16(&b[4]) > AV_RL16(&b[8])
+        || AV_RL16(&b[6]) > AV_RL16(&b[10])
+        || b[64])
+        return 0;
+    b += 73;
+    while (++b < p->buf + 128)
+        if (*b)
+            return AVPROBE_SCORE_EXTENSION / 4;
+
+    return AVPROBE_SCORE_EXTENSION + 1;
 }
 
 static int qdraw_probe(AVProbeData *p)
@@ -864,6 +887,7 @@ IMAGEAUTO_DEMUXER(exr,     AV_CODEC_ID_EXR)
 IMAGEAUTO_DEMUXER(j2k,     AV_CODEC_ID_JPEG2000)
 IMAGEAUTO_DEMUXER(jpeg,    AV_CODEC_ID_MJPEG)
 IMAGEAUTO_DEMUXER(jpegls,  AV_CODEC_ID_JPEGLS)
+IMAGEAUTO_DEMUXER(pcx,     AV_CODEC_ID_PCX)
 IMAGEAUTO_DEMUXER(pictor,  AV_CODEC_ID_PICTOR)
 IMAGEAUTO_DEMUXER(png,     AV_CODEC_ID_PNG)
 IMAGEAUTO_DEMUXER(qdraw,   AV_CODEC_ID_QDRAW)

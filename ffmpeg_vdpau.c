@@ -106,7 +106,6 @@ static int vdpau_alloc(AVCodecContext *s)
 {
     InputStream  *ist = s->opaque;
     int loglevel = (ist->hwaccel_id == HWACCEL_AUTO) ? AV_LOG_VERBOSE : AV_LOG_ERROR;
-    AVVDPAUContext *vdpau_ctx;
     VDPAUContext *ctx;
     const char *display, *vendor;
     VdpStatus err;
@@ -127,8 +126,10 @@ static int vdpau_alloc(AVCodecContext *s)
         return AVERROR(ENOMEM);
 
     device_priv = av_mallocz(sizeof(*device_priv));
-    if (!device_priv)
+    if (!device_priv) {
+        av_freep(&ctx);
         goto fail;
+    }
 
     ist->hwaccel_ctx           = ctx;
     ist->hwaccel_uninit        = vdpau_uninit;

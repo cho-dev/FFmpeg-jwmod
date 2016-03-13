@@ -24,6 +24,7 @@ OBJS = allfilters.o                                                     \
        transform.o                                                      \
        video.o                                                          \
 
+OBJS-$(CONFIG_ABENCH_FILTER)                 += f_bench.o
 OBJS-$(CONFIG_ACOMPRESSOR_FILTER)            += af_sidechaincompress.o
 OBJS-$(CONFIG_ACROSSFADE_FILTER)             += af_afade.o
 OBJS-$(CONFIG_ADELAY_FILTER)                 += af_adelay.o
@@ -116,12 +117,14 @@ OBJS-$(CONFIG_ALPHAEXTRACT_FILTER)           += vf_extractplanes.o
 OBJS-$(CONFIG_ALPHAMERGE_FILTER)             += vf_alphamerge.o
 OBJS-$(CONFIG_ATADENOISE_FILTER)             += vf_atadenoise.o
 OBJS-$(CONFIG_BBOX_FILTER)                   += bbox.o vf_bbox.o
+OBJS-$(CONFIG_BENCH_FILTER)                  += f_bench.o
 OBJS-$(CONFIG_BLACKDETECT_FILTER)            += vf_blackdetect.o
 OBJS-$(CONFIG_BLACKFRAME_FILTER)             += vf_blackframe.o
 OBJS-$(CONFIG_BLEND_FILTER)                  += vf_blend.o dualinput.o framesync.o
 OBJS-$(CONFIG_BOXBLUR_FILTER)                += vf_boxblur.o
 OBJS-$(CONFIG_BWDIF_FILTER)                  += vf_bwdif.o
 OBJS-$(CONFIG_CHROMAKEY_FILTER)              += vf_chromakey.o
+OBJS-$(CONFIG_CIESCOPE_FILTER)               += vf_ciescope.o
 OBJS-$(CONFIG_CODECVIEW_FILTER)              += vf_codecview.o
 OBJS-$(CONFIG_COLORBALANCE_FILTER)           += vf_colorbalance.o
 OBJS-$(CONFIG_COLORCHANNELMIXER_FILTER)      += vf_colorchannelmixer.o

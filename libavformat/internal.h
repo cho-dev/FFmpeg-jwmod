@@ -532,7 +532,7 @@ enum AVWriteUncodedFrameFlags {
 /**
  * Copies the whilelists from one context to the other
  */
-int ff_copy_whitelists(AVFormatContext *dst, AVFormatContext *src);
+int ff_copy_whiteblacklists(AVFormatContext *dst, AVFormatContext *src);
 
 int ffio_open2_wrapper(struct AVFormatContext *s, AVIOContext **pb, const char *url, int flags,
                        const AVIOInterruptCB *int_cb, AVDictionary **options);
@@ -560,6 +560,14 @@ void ff_format_io_close(AVFormatContext *s, AVIOContext **pb);
  */
 int ff_parse_creation_time_metadata(AVFormatContext *s, int64_t *timestamp, int return_seconds);
 
+/**
+ * Standardize creation_time metadata in AVFormatContext to an ISO-8601
+ * timestamp string.
+ *
+ * @param s AVFormatContext
+ * @return <0 on error
+ */
+int ff_standardize_creation_time(AVFormatContext *s);
 
 #define CONTAINS_PAL 2
 /**
@@ -572,5 +580,20 @@ int ff_parse_creation_time_metadata(AVFormatContext *s, int64_t *timestamp, int 
  *         CONTAINS_PAL if in addition to a new packet the old contained a palette
  */
 int ff_reshuffle_raw_rgb(AVFormatContext *s, AVPacket **ppkt, AVCodecContext *enc, int expected_stride);
+
+/**
+ * Retrieves the palette from a packet, either from side data, or
+ * appended to the video data in the packet itself (raw video only).
+ * It is commonly used after a call to ff_reshuffle_raw_rgb().
+ *
+ * Use 0 for the ret parameter to check for side data only.
+ *
+ * @param pkt pointer to packet before calling ff_reshuffle_raw_rgb()
+ * @param ret return value from ff_reshuffle_raw_rgb(), or 0
+ * @param palette pointer to palette buffer
+ * @return negative error code or
+ *         1 if the packet has a palette, else 0
+ */
+int ff_get_packet_palette(AVFormatContext *s, AVPacket *pkt, int ret, uint32_t *palette);
 
 #endif /* AVFORMAT_INTERNAL_H */

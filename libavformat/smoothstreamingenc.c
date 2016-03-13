@@ -122,8 +122,8 @@ static int64_t ism_seek(void *opaque, int64_t offset, int whence)
             AVDictionary *opts = NULL;
             os->tail_out = os->out;
             av_dict_set(&opts, "truncate", "0", 0);
-            ret = ffurl_open_whitelist(&os->out, frag->file, AVIO_FLAG_READ_WRITE,
-                                       &os->ctx->interrupt_callback, &opts, os->ctx->protocol_whitelist);
+            ret = ffurl_open_whitelist(&os->out, frag->file, AVIO_FLAG_WRITE,
+                                       &os->ctx->interrupt_callback, &opts, os->ctx->protocol_whitelist, os->ctx->protocol_blacklist);
             av_dict_free(&opts);
             if (ret < 0) {
                 os->out = os->tail_out;
@@ -131,8 +131,8 @@ static int64_t ism_seek(void *opaque, int64_t offset, int whence)
                 return ret;
             }
             av_dict_set(&opts, "truncate", "0", 0);
-            ffurl_open_whitelist(&os->out2, frag->infofile, AVIO_FLAG_READ_WRITE,
-                                 &os->ctx->interrupt_callback, &opts, os->ctx->protocol_whitelist);
+            ffurl_open_whitelist(&os->out2, frag->infofile, AVIO_FLAG_WRITE,
+                                 &os->ctx->interrupt_callback, &opts, os->ctx->protocol_whitelist, os->ctx->protocol_blacklist);
             av_dict_free(&opts);
             ffurl_seek(os->out, offset - frag->start_pos, SEEK_SET);
             if (os->out2)
@@ -332,7 +332,7 @@ static int ism_write_header(AVFormatContext *s)
         }
 
         ctx = avformat_alloc_context();
-        if (!ctx || ff_copy_whitelists(ctx, s) < 0) {
+        if (!ctx || ff_copy_whiteblacklists(ctx, s) < 0) {
             ret = AVERROR(ENOMEM);
             goto fail;
         }
@@ -526,7 +526,7 @@ static int ism_flush(AVFormatContext *s, int final)
             continue;
 
         snprintf(filename, sizeof(filename), "%s/temp", os->dirname);
-        ret = ffurl_open_whitelist(&os->out, filename, AVIO_FLAG_WRITE, &s->interrupt_callback, NULL, s->protocol_whitelist);
+        ret = ffurl_open_whitelist(&os->out, filename, AVIO_FLAG_WRITE, &s->interrupt_callback, NULL, s->protocol_whitelist, s->protocol_blacklist);
         if (ret < 0)
             break;
         os->cur_start_pos = os->tail_pos;

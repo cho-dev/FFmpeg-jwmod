@@ -178,6 +178,7 @@ TESTPROGS = adler32                                                     \
             bprint                                                      \
             cast5                                                       \
             camellia                                                    \
+            color_utils                                                 \
             cpu                                                         \
             crc                                                         \
             des                                                         \
@@ -187,6 +188,7 @@ TESTPROGS = adler32                                                     \
             file                                                        \
             fifo                                                        \
             float_dsp                                                   \
+            hash                                                        \
             hmac                                                        \
             lfg                                                         \
             lls                                                         \

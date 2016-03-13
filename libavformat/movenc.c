@@ -83,9 +83,9 @@ static const AVOption options[] = {
     { "fragment_index", "Fragment number of the next fragment", offsetof(MOVMuxContext, fragments), AV_OPT_TYPE_INT, {.i64 = 1}, 1, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "mov_gamma", "gamma value for gama atom", offsetof(MOVMuxContext, gamma), AV_OPT_TYPE_FLOAT, {.dbl = 0.0 }, 0.0, 10, AV_OPT_FLAG_ENCODING_PARAM},
     { "frag_interleave", "Interleave samples within fragments (max number of consecutive samples, lower is tighter interleaving, but with more overhead)", offsetof(MOVMuxContext, frag_interleave), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM },
-    { "encryption_scheme",    "Configures the encryption scheme, allowed values are none, cenc-aes-ctr", offsetof(MOVMuxContext, encryption_scheme_str),   AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM, .unit = "movflags" },
-    { "encryption_key", "The media encryption key (hex)", offsetof(MOVMuxContext, encryption_key), AV_OPT_TYPE_BINARY, .flags = AV_OPT_FLAG_ENCODING_PARAM, .unit = "movflags" },
-    { "encryption_kid", "The media encryption key identifier (hex)", offsetof(MOVMuxContext, encryption_kid), AV_OPT_TYPE_BINARY, .flags = AV_OPT_FLAG_ENCODING_PARAM, .unit = "movflags" },
+    { "encryption_scheme",    "Configures the encryption scheme, allowed values are none, cenc-aes-ctr", offsetof(MOVMuxContext, encryption_scheme_str),   AV_OPT_TYPE_STRING, {.str = NULL}, .flags = AV_OPT_FLAG_ENCODING_PARAM },
+    { "encryption_key", "The media encryption key (hex)", offsetof(MOVMuxContext, encryption_key), AV_OPT_TYPE_BINARY, .flags = AV_OPT_FLAG_ENCODING_PARAM },
+    { "encryption_kid", "The media encryption key identifier (hex)", offsetof(MOVMuxContext, encryption_kid), AV_OPT_TYPE_BINARY, .flags = AV_OPT_FLAG_ENCODING_PARAM },
     { NULL },
 };
 
@@ -1716,14 +1716,15 @@ static int mov_write_video_tag(AVIOContext *pb, MOVMuxContext *mov, MOVTrack *tr
     else
         avio_wb16(pb, 0x18); /* Reserved */
 
-    if (track->is_unaligned_qt_rgb && track->enc->pix_fmt == AV_PIX_FMT_PAL8) {
+    if (track->mode == MODE_MOV && track->enc->pix_fmt == AV_PIX_FMT_PAL8) {
+        int pal_size = 1 << track->enc->bits_per_coded_sample;
         int i;
         avio_wb16(pb, 0);             /* Color table ID */
         avio_wb32(pb, 0);             /* Color table seed */
         avio_wb16(pb, 0x8000);        /* Color table flags */
-        avio_wb16(pb, 255);           /* Color table size (zero-relative) */
-        for (i = 0; i < 256; i++) {
-            uint32_t rgb = AV_RL32(&track->palette[i]);
+        avio_wb16(pb, pal_size - 1);  /* Color table size (zero-relative) */
+        for (i = 0; i < pal_size; i++) {
+            uint32_t rgb = track->palette[i];
             uint16_t r = (rgb >> 16) & 0xff;
             uint16_t g = (rgb >> 8)  & 0xff;
             uint16_t b = rgb         & 0xff;
@@ -1866,7 +1867,7 @@ static int mov_write_tmcd_tag(AVIOContext *pb, MOVTrack *track)
     if (track->st)
         t = av_dict_get(track->st->metadata, "reel_name", NULL, 0);
 
-    if (t && utf8len(t->value))
+    if (t && utf8len(t->value) && track->mode != MODE_MP4)
         mov_write_source_reference_tag(pb, track, t->value);
     else
         avio_wb16(pb, 0); /* zero size */
@@ -2246,7 +2247,10 @@ static int mov_write_minf_tag(AVIOContext *pb, MOVMuxContext *mov, MOVTrack *tra
     } else if (track->tag == MKTAG('r','t','p',' ')) {
         mov_write_hmhd_tag(pb);
     } else if (track->tag == MKTAG('t','m','c','d')) {
-        mov_write_gmhd_tag(pb, track);
+        if (track->mode == MODE_MP4)
+            mov_write_nmhd_tag(pb);
+        else
+            mov_write_gmhd_tag(pb, track);
     }
     if (track->mode == MODE_MOV) /* FIXME: Why do it for MODE_MOV only ? */
         mov_write_hdlr_tag(pb, NULL);
@@ -4760,21 +4764,26 @@ static int mov_write_packet(AVFormatContext *s, AVPacket *pkt)
             }
         }
 
-        if (trk->is_unaligned_qt_rgb) {
-            const uint8_t *data = pkt->data;
-            int size = pkt->size;
-            int64_t bpc = trk->enc->bits_per_coded_sample != 15 ? trk->enc->bits_per_coded_sample : 16;
-            int expected_stride = ((trk->enc->width * bpc + 15) >> 4)*2;
-            int ret = ff_reshuffle_raw_rgb(s, &pkt, trk->enc, expected_stride);
-            if (ret < 0)
-                return ret;
-            if (ret == CONTAINS_PAL && !trk->pal_done) {
-                int pal_size = 1 << trk->enc->bits_per_coded_sample;
-                memset(trk->palette, 0, AVPALETTE_SIZE);
-                memcpy(trk->palette, data + size - 4*pal_size, 4*pal_size);
-                trk->pal_done++;
-            } else if (trk->enc->pix_fmt == AV_PIX_FMT_GRAY8 ||
-                       trk->enc->pix_fmt == AV_PIX_FMT_MONOBLACK) {
+        if (trk->mode == MODE_MOV && trk->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
+            AVPacket *opkt = pkt;
+            int ret;
+            if (trk->is_unaligned_qt_rgb) {
+                int64_t bpc = trk->enc->bits_per_coded_sample != 15 ? trk->enc->bits_per_coded_sample : 16;
+                int expected_stride = ((trk->enc->width * bpc + 15) >> 4)*2;
+                ret = ff_reshuffle_raw_rgb(s, &pkt, trk->enc, expected_stride);
+                if (ret < 0)
+                    return ret;
+            } else
+                ret = 0;
+            if (trk->enc->pix_fmt == AV_PIX_FMT_PAL8 && !trk->pal_done) {
+                int ret2 = ff_get_packet_palette(s, opkt, ret, trk->palette);
+                if (ret2 < 0)
+                    return ret2;
+                if (ret2)
+                    trk->pal_done++;
+            } else if (trk->enc->codec_id == AV_CODEC_ID_RAWVIDEO &&
+                       (trk->enc->pix_fmt == AV_PIX_FMT_GRAY8 ||
+                       trk->enc->pix_fmt == AV_PIX_FMT_MONOBLACK)) {
                 for (i = 0; i < pkt->size; i++)
                     pkt->data[i] = ~pkt->data[i];
             }
@@ -5185,7 +5194,7 @@ static int mov_write_header(AVFormatContext *s)
         }
     }
 
-    if (mov->mode == MODE_MOV) {
+    if (mov->mode == MODE_MOV || mov->mode == MODE_MP4) {
         tmcd_track = mov->nb_streams;
 
         /* +1 tmcd track for each video stream with a timecode */

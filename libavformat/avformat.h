@@ -1841,9 +1841,9 @@ typedef struct AVFormatContext {
     /*
      * A callback for opening new IO streams.
      *
-     * Certain muxers or demuxers (e.g. for various playlist-based formats) need
-     * to open additional files during muxing or demuxing. This callback allows
-     * the caller to provide custom IO in such cases.
+     * Whenever a muxer or a demuxer needs to open an IO stream (typically from
+     * avformat_open_input() for demuxers, but for certain formats can happen at
+     * other times as well), it will call this callback to obtain an IO context.
      *
      * @param s the format context
      * @param pb on success, the newly opened IO context should be returned here
@@ -1865,6 +1865,13 @@ typedef struct AVFormatContext {
      * A callback for closing the streams opened with AVFormatContext.io_open().
      */
     void (*io_close)(struct AVFormatContext *s, AVIOContext *pb);
+
+    /**
+     * ',' separated list of disallowed protocols.
+     * - encoding: unused
+     * - decoding: set by user through AVOptions (NO direct access)
+     */
+    char *protocol_blacklist;
 } AVFormatContext;
 
 int av_format_get_probe_score(const AVFormatContext *s);
@@ -2843,7 +2850,9 @@ int avformat_queue_attached_pictures(AVFormatContext *s);
  * Apply a list of bitstream filters to a packet.
  *
  * @param codec AVCodecContext, usually from an AVStream
- * @param pkt the packet to apply filters to
+ * @param pkt the packet to apply filters to. If, on success, the returned
+ *        packet has size == 0 and side_data_elems == 0, it indicates that
+ *        the packet should be dropped
  * @param bsfc a NULL-terminated list of filters to apply
  * @return  >=0 on success;
  *          AVERROR code on failure

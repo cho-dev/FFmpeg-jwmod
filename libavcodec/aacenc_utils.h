@@ -66,13 +66,13 @@ static inline void quantize_bands(int *out, const float *in, const float *scaled
                                   const float rounding)
 {
     int i;
-    double qc;
     for (i = 0; i < size; i++) {
-        qc = scaled[i] * Q34;
-        out[i] = (int)FFMIN(qc + rounding, (double)maxval);
+        float qc = scaled[i] * Q34;
+        int tmp = (int)FFMIN(qc + rounding, (float)maxval);
         if (is_signed && in[i] < 0.0f) {
-            out[i] = -out[i];
+            tmp = -tmp;
         }
+        out[i] = tmp;
     }
 }
 
@@ -90,8 +90,7 @@ static inline float find_max_val(int group_len, int swb_size, const float *scale
 
 static inline int find_min_book(float maxval, int sf)
 {
-    float Q = ff_aac_pow2sf_tab[POW_SF2_ZERO - sf + SCALE_ONE_POS - SCALE_DIV_512];
-    float Q34 = sqrtf(Q * sqrtf(Q));
+    float Q34 = ff_aac_pow34sf_tab[POW_SF2_ZERO - sf + SCALE_ONE_POS - SCALE_DIV_512];
     int qmaxval, cb;
     qmaxval = maxval * Q34 + C_QUANT;
     if (qmaxval >= (FF_ARRAY_ELEMS(aac_maxval_cb)))

@@ -282,7 +282,7 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
     }
 
     if (s->avctx->bits_per_raw_sample != bits) {
-        av_log(s->avctx, AV_LOG_INFO, "Changing bps to %d\n", bits);
+        av_log(s->avctx, s->avctx->bits_per_raw_sample > 0 ? AV_LOG_INFO : AV_LOG_DEBUG, "Changing bps from %d to %d\n", s->avctx->bits_per_raw_sample, bits);
         s->avctx->bits_per_raw_sample = bits;
         init_idct(s->avctx);
     }
@@ -612,6 +612,13 @@ unk_pixfmt:
     if (!s->pix_desc) {
         av_log(s->avctx, AV_LOG_ERROR, "Could not get a pixel format descriptor.\n");
         return AVERROR_BUG;
+    }
+
+    if (s->avctx->skip_frame == AVDISCARD_ALL) {
+        s->picture_ptr->pict_type = AV_PICTURE_TYPE_I;
+        s->picture_ptr->key_frame = 1;
+        s->got_picture            = 1;
+        return 0;
     }
 
     av_frame_unref(s->picture_ptr);
@@ -1381,12 +1388,10 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s, int ss,
         return AVERROR_INVALIDDATA;
     }
 
-    if (!Al) {
-        // s->coefs_finished is a bitmask for coefficients coded
-        // ss and se are parameters telling start and end coefficients
-        s->coefs_finished[c] |= (2ULL << se) - (1ULL << ss);
-        last_scan = !~s->coefs_finished[c];
-    }
+    // s->coefs_finished is a bitmask for coefficients coded
+    // ss and se are parameters telling start and end coefficients
+    s->coefs_finished[c] |= (2ULL << se) - (1ULL << ss);
+    last_scan = !Al && !~s->coefs_finished[c];
 
     if (s->interlaced && s->bottom_field)
         data += linesize >> 1;
@@ -1873,8 +1878,10 @@ static int mjpeg_decode_com(MJpegDecodeContext *s)
             else if ((!strncmp(cbuf, "Intel(R) JPEG Library, version 1", 32) && s->avctx->codec_tag) ||
                      (!strncmp(cbuf, "Metasoft MJPEG Codec", 20)))
                 s->flipped = 1;
-            else if (!strcmp(cbuf, "MULTISCOPE II"))
+            else if (!strcmp(cbuf, "MULTISCOPE II")) {
+                s->avctx->sample_aspect_ratio = (AVRational) { 1, 2 };
                 s->multiscope = 2;
+            }
 
             av_free(cbuf);
         }
@@ -2268,7 +2275,8 @@ the_end:
                    avctx->pix_fmt == AV_PIX_FMT_GBRAP
                   );
         avcodec_get_chroma_sub_sample(s->avctx->pix_fmt, &hshift, &vshift);
-        for (p = 0; p<4; p++) {
+        av_assert0(s->nb_components == av_pix_fmt_count_planes(s->picture_ptr->format));
+        for (p = 0; p<s->nb_components; p++) {
             uint8_t *line = s->picture_ptr->data[p];
             int w = s->width;
             int h = s->height;
@@ -2326,7 +2334,8 @@ the_end:
                    avctx->pix_fmt == AV_PIX_FMT_GBRAP
                    );
         avcodec_get_chroma_sub_sample(s->avctx->pix_fmt, &hshift, &vshift);
-        for (p = 0; p < 4; p++) {
+        av_assert0(s->nb_components == av_pix_fmt_count_planes(s->picture_ptr->format));
+        for (p = 0; p < s->nb_components; p++) {
             uint8_t *dst;
             int w = s->width;
             int h = s->height;
@@ -2353,7 +2362,8 @@ the_end:
     if (s->flipped) {
         int j;
         avcodec_get_chroma_sub_sample(s->avctx->pix_fmt, &hshift, &vshift);
-        for (index=0; index<4; index++) {
+        av_assert0(s->nb_components == av_pix_fmt_count_planes(s->picture_ptr->format));
+        for (index=0; index<s->nb_components; index++) {
             uint8_t *dst = s->picture_ptr->data[index];
             int w = s->picture_ptr->width;
             int h = s->picture_ptr->height;
@@ -2375,6 +2385,7 @@ the_end:
     if (s->adobe_transform == 0 && s->avctx->pix_fmt == AV_PIX_FMT_GBRAP) {
         int w = s->picture_ptr->width;
         int h = s->picture_ptr->height;
+        av_assert0(s->nb_components == 4);
         for (i=0; i<h; i++) {
             int j;
             uint8_t *dst[4];
@@ -2397,6 +2408,7 @@ the_end:
     if (s->adobe_transform == 2 && s->avctx->pix_fmt == AV_PIX_FMT_YUVA444P) {
         int w = s->picture_ptr->width;
         int h = s->picture_ptr->height;
+        av_assert0(s->nb_components == 4);
         for (i=0; i<h; i++) {
             int j;
             uint8_t *dst[4];

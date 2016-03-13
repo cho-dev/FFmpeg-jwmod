@@ -568,7 +568,7 @@ redo:
         codec_id = AV_CODEC_ID_DTS;
     } else if (startcode >= 0xa0 && startcode <= 0xaf) {
         type     = AVMEDIA_TYPE_AUDIO;
-        if (lpcm_header_len == 6) {
+        if (lpcm_header_len == 6 || startcode == 0xa1) {
             codec_id = AV_CODEC_ID_MLP;
         } else {
             codec_id = AV_CODEC_ID_PCM_DVD;
@@ -732,7 +732,7 @@ static int vobsub_read_header(AVFormatContext *s)
         goto end;
     }
 
-    if ((ret = ff_copy_whitelists(vobsub->sub_ctx, s)) < 0)
+    if ((ret = ff_copy_whiteblacklists(vobsub->sub_ctx, s)) < 0)
         goto end;
 
     ret = avformat_open_input(&vobsub->sub_ctx, vobsub->sub_name, iformat, NULL);

@@ -1089,7 +1089,7 @@ static int read_gab2_sub(AVFormatContext *s, AVStream *st, AVPacket *pkt)
 
         ast->sub_ctx->pb = pb;
 
-        if (ff_copy_whitelists(ast->sub_ctx, s) < 0)
+        if (ff_copy_whiteblacklists(ast->sub_ctx, s) < 0)
             goto error;
 
         if (!avformat_open_input(&ast->sub_ctx, "", sub_demuxer, NULL)) {
@@ -1580,6 +1580,9 @@ static int avi_read_idx1(AVFormatContext *s, int size)
             continue;
         st  = s->streams[index];
         ast = st->priv_data;
+
+        if ((tag >> 16 & 0xff) == 'p' && (tag >> 24 & 0xff) == 'c')
+            continue;
 
         if (first_packet && first_packet_pos) {
             if (avi->movi_list + 4 != pos || pos + 500 > first_packet_pos)
