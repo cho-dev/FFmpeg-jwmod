@@ -997,16 +997,22 @@ static void update_initial_timestamps(AVFormatContext *s, int stream_index,
         if (is_relative(pktl_it->pkt.dts))
             pktl_it->pkt.dts += shift;
 
-        if (st->start_time == AV_NOPTS_VALUE && pktl_it->pkt.pts != AV_NOPTS_VALUE)
+        if (st->start_time == AV_NOPTS_VALUE && pktl_it->pkt.pts != AV_NOPTS_VALUE) {
             st->start_time = pktl_it->pkt.pts;
+            if (st->codec->codec_type == AVMEDIA_TYPE_AUDIO && st->codec->sample_rate)
+                st->start_time += av_rescale_q(st->skip_samples, (AVRational){1, st->codec->sample_rate}, st->time_base);
+        }
     }
 
     if (has_decode_delay_been_guessed(st)) {
         update_dts_from_pts(s, stream_index, pktl);
     }
 
-    if (st->start_time == AV_NOPTS_VALUE)
+    if (st->start_time == AV_NOPTS_VALUE) {
         st->start_time = pts;
+        if (st->codec->codec_type == AVMEDIA_TYPE_AUDIO && st->codec->sample_rate)
+            st->start_time += av_rescale_q(st->skip_samples, (AVRational){1, st->codec->sample_rate}, st->time_base);
+    }
 }
 
 static void update_initial_durations(AVFormatContext *s, AVStream *st,
@@ -3202,6 +3208,8 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
         max_subtitle_analyze_duration = 30*AV_TIME_BASE;
         if (!strcmp(ic->iformat->name, "flv"))
             max_stream_analyze_duration = 90*AV_TIME_BASE;
+        if (!strcmp(ic->iformat->name, "mpeg") || !strcmp(ic->iformat->name, "mpegts"))
+            max_stream_analyze_duration = 7*AV_TIME_BASE;
     }
 
     if (ic->pb)
@@ -3313,7 +3321,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
                 break;
             if (st->first_dts == AV_NOPTS_VALUE &&
                 !(ic->iformat->flags & AVFMT_NOTIMESTAMPS) &&
-                st->codec_info_nb_frames < ic->max_ts_probe &&
+                st->codec_info_nb_frames < ((st->disposition & AV_DISPOSITION_ATTACHED_PIC) ? 1 : ic->max_ts_probe) &&
                 (st->codec->codec_type == AVMEDIA_TYPE_VIDEO ||
                  st->codec->codec_type == AVMEDIA_TYPE_AUDIO))
                 break;
