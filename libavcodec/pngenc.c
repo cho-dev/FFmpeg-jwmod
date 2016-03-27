@@ -766,6 +766,9 @@ static int apng_encode_frame(AVCodecContext *avctx, const AVFrame *pict,
 
             // Do disposal
             if (last_fctl_chunk.dispose_op != APNG_DISPOSE_OP_PREVIOUS) {
+                diffFrame->format = s->last_frame->format;
+                diffFrame->width = s->last_frame->width;
+                diffFrame->height = s->last_frame->height;
                 av_frame_copy(diffFrame, s->last_frame);
 
                 if (last_fctl_chunk.dispose_op == APNG_DISPOSE_OP_BACKGROUND) {
@@ -778,6 +781,9 @@ static int apng_encode_frame(AVCodecContext *avctx, const AVFrame *pict,
                 if (!s->prev_frame)
                     continue;
 
+                diffFrame->format = s->prev_frame->format;
+                diffFrame->width = s->prev_frame->width;
+                diffFrame->height = s->prev_frame->height;
                 av_frame_copy(diffFrame, s->prev_frame);
             }
 
