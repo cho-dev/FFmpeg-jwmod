@@ -34,7 +34,7 @@ static int nist_probe(AVProbeData *p)
 
 static int nist_read_header(AVFormatContext *s)
 {
-    char buffer[32], coding[32] = "pcm", format[32] = "01";
+    char buffer[256], coding[32] = "pcm", format[32] = "01";
     int bps = 0, be = 0;
     int32_t header_size = -1;
     AVStream *st;
@@ -69,6 +69,10 @@ static int nist_read_header(AVFormatContext *s)
             } else if (!av_strcasecmp(coding, "ulaw") ||
                        !av_strcasecmp(coding, "mu-law")) {
                 st->codec->codec_id = AV_CODEC_ID_PCM_MULAW;
+            } else if (!av_strncasecmp(coding, "pcm,embedded-shorten", 20)) {
+                st->codec->codec_id = AV_CODEC_ID_SHORTEN;
+                if (ff_alloc_extradata(st->codec, 1))
+                    st->codec->extradata[0] = 1;
             } else {
                 avpriv_request_sample(s, "coding %s", coding);
             }
@@ -108,7 +112,7 @@ static int nist_read_header(AVFormatContext *s)
             sscanf(buffer, "%*s %*s %"SCNd32, &st->codec->bits_per_coded_sample);
         } else {
             char key[32], value[32];
-            if (sscanf(buffer, "%31s %*s %31s", key, value) == 3) {
+            if (sscanf(buffer, "%31s %*s %31s", key, value) == 2) {
                 av_dict_set(&s->metadata, key, value, AV_DICT_APPEND);
             } else {
                 av_log(s, AV_LOG_ERROR, "Failed to parse '%s' as metadata\n", buffer);
