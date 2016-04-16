@@ -520,7 +520,8 @@ static int huf_decode(const uint64_t *hcode, const HufDec *hdecod,
     uint16_t *outb    = out;
     uint16_t *oe      = out + no;
     const uint8_t *ie = gb->buffer + (nbits + 7) / 8; // input byte size
-    uint8_t cs, s;
+    uint8_t cs;
+    uint16_t s;
     int i, lc = 0;
 
     while (gb->buffer < ie) {
@@ -768,7 +769,7 @@ static int piz_uncompress(EXRContext *s, const uint8_t *src, int ssize,
     if (min_non_zero <= max_non_zero)
         bytestream2_get_buffer(&gb, td->bitmap + min_non_zero,
                                max_non_zero - min_non_zero + 1);
-    memset(td->bitmap + max_non_zero, 0, BITMAP_SIZE - max_non_zero);
+    memset(td->bitmap + max_non_zero + 1, 0, BITMAP_SIZE - max_non_zero - 1);
 
     maxval = reverse_lut(td->bitmap, td->lut);
 
@@ -1382,15 +1383,17 @@ static int decode_header(EXRContext *s)
                     return AVERROR_PATCHWELCOME;
                 }
 
-                if (channel_index >= 0) {
-                    if (s->pixel_type != EXR_UNKNOWN &&
-                        s->pixel_type != current_pixel_type) {
-                        av_log(s->avctx, AV_LOG_ERROR,
-                               "RGB channels not of the same depth.\n");
-                        return AVERROR_INVALIDDATA;
+                if (s->channel_offsets[channel_index] == -1){/* channel have not been previously assign */
+                    if (channel_index >= 0) {
+                        if (s->pixel_type != EXR_UNKNOWN &&
+                            s->pixel_type != current_pixel_type) {
+                            av_log(s->avctx, AV_LOG_ERROR,
+                                   "RGB channels not of the same depth.\n");
+                            return AVERROR_INVALIDDATA;
+                        }
+                        s->pixel_type                     = current_pixel_type;
+                        s->channel_offsets[channel_index] = s->current_channel_offset;
                     }
-                    s->pixel_type                     = current_pixel_type;
-                    s->channel_offsets[channel_index] = s->current_channel_offset;
                 }
 
                 s->channels = av_realloc(s->channels,

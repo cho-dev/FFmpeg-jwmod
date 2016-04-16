@@ -104,6 +104,7 @@ void avfilter_register_all(void)
     REGISTER_FILTER(EXTRASTEREO,    extrastereo,    af);
     REGISTER_FILTER(FIREQUALIZER,   firequalizer,   af);
     REGISTER_FILTER(FLANGER,        flanger,        af);
+    REGISTER_FILTER(HDCD,           hdcd,           af);
     REGISTER_FILTER(HIGHPASS,       highpass,       af);
     REGISTER_FILTER(JOIN,           join,           af);
     REGISTER_FILTER(LADSPA,         ladspa,         af);
@@ -152,6 +153,7 @@ void avfilter_register_all(void)
     REGISTER_FILTER(COLORKEY,       colorkey,       vf);
     REGISTER_FILTER(COLORLEVELS,    colorlevels,    vf);
     REGISTER_FILTER(COLORMATRIX,    colormatrix,    vf);
+    REGISTER_FILTER(COLORSPACE,     colorspace,     vf);
     REGISTER_FILTER(CONVOLUTION,    convolution,    vf);
     REGISTER_FILTER(COPY,           copy,           vf);
     REGISTER_FILTER(COREIMAGE,      coreimage,      vf);
@@ -201,6 +203,8 @@ void avfilter_register_all(void)
     REGISTER_FILTER(HISTOGRAM,      histogram,      vf);
     REGISTER_FILTER(HQDN3D,         hqdn3d,         vf);
     REGISTER_FILTER(HQX,            hqx,            vf);
+    REGISTER_FILTER(HWDOWNLOAD,     hwdownload,     vf);
+    REGISTER_FILTER(HWUPLOAD,       hwupload,       vf);
     REGISTER_FILTER(HWUPLOAD_CUDA,  hwupload_cuda,  vf);
     REGISTER_FILTER(HSTACK,         hstack,         vf);
     REGISTER_FILTER(HUE,            hue,            vf);

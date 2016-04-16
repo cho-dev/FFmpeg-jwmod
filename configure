@@ -2649,10 +2649,12 @@ mjpeg2jpeg_bsf_select="jpegtables"
 # external libraries
 aac_at_decoder_deps="audiotoolbox"
 ac3_at_decoder_deps="audiotoolbox"
+ac3_at_decoder_select="ac3_parser"
 adpcm_ima_qt_at_decoder_deps="audiotoolbox"
 alac_at_decoder_deps="audiotoolbox"
 amr_nb_at_decoder_deps="audiotoolbox"
 eac3_at_decoder_deps="audiotoolbox"
+eac3_at_decoder_select="ac3_parser"
 gsm_ms_at_decoder_deps="audiotoolbox"
 ilbc_at_decoder_deps="audiotoolbox"
 mp1_at_decoder_deps="audiotoolbox"
@@ -3398,6 +3400,11 @@ case "$toolchain" in
         add_cflags  -fsanitize=address
         add_ldflags -fsanitize=address
     ;;
+    *-msan)
+        cc_default="${toolchain%-msan}"
+        add_cflags  -fsanitize=memory -fsanitize-memory-track-origins
+        add_ldflags -fsanitize=memory
+    ;;
     *-tsan)
         cc_default="${toolchain%-tsan}"
         add_cflags  -fsanitize=thread -pie
@@ -3464,6 +3471,10 @@ case "$toolchain" in
     gcov)
         add_cflags  -fprofile-arcs -ftest-coverage
         add_ldflags -fprofile-arcs -ftest-coverage
+    ;;
+    llvm-cov)
+        add_cflags -fprofile-arcs -ftest-coverage
+        add_ldflags --coverage
     ;;
     hardened)
         add_cppflags -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
@@ -5846,6 +5857,10 @@ EOF
 
 enabled vaapi &&
     check_lib va/va.h vaInitialize -lva ||
+    disable vaapi
+
+enabled vaapi &&
+    check_code cc "va/va.h" "vaCreateSurfaces(0, 0, 0, 0, 0, 0, 0, 0)" ||
     disable vaapi
 
 enabled vaapi && enabled xlib &&
