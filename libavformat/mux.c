@@ -309,6 +309,12 @@ FF_DISABLE_DEPRECATION_WARNINGS
 FF_ENABLE_DEPRECATION_WARNINGS
 #endif
 
+        /* update internal context from codecpar, old bsf api needs this
+         * FIXME: remove when autobsf uses new bsf API */
+        ret = avcodec_parameters_to_context(st->internal->avctx, st->codecpar);
+        if (ret < 0)
+            goto fail;
+
         if (!st->time_base.num) {
             /* fall back on the default timebase values */
             if (par->codec_type == AVMEDIA_TYPE_AUDIO && par->sample_rate)
@@ -418,7 +424,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
     }
 
     if (s->oformat->init && (ret = s->oformat->init(s)) < 0) {
-        s->oformat->deinit(s);
+        if (s->oformat->deinit)
+            s->oformat->deinit(s);
         goto fail;
     }
 

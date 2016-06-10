@@ -542,13 +542,16 @@ static int analyze(const uint8_t *buf, int size, int packet_size,
     memset(stat, 0, packet_size * sizeof(*stat));
 
     for (i = 0; i < size - 3; i++) {
-        if (buf[i] == 0x47 &&
-            (!probe || (buf[i + 3] & 0x30))) {
-            int x = i % packet_size;
-            stat[x]++;
-            stat_all++;
-            if (stat[x] > best_score) {
-                best_score = stat[x];
+        if (buf[i] == 0x47) {
+            int pid = AV_RB16(buf+1) & 0x1FFF;
+            int asc = buf[i + 3] & 0x30;
+            if (!probe || pid == 0x1FFF || asc) {
+                int x = i % packet_size;
+                stat[x]++;
+                stat_all++;
+                if (stat[x] > best_score) {
+                    best_score = stat[x];
+                }
             }
         }
     }
@@ -735,8 +738,10 @@ static const StreamType REGD_types[] = {
     { MKTAG('D', 'T', 'S', '1'), AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_DTS   },
     { MKTAG('D', 'T', 'S', '2'), AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_DTS   },
     { MKTAG('D', 'T', 'S', '3'), AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_DTS   },
+    { MKTAG('E', 'A', 'C', '3'), AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_EAC3  },
     { MKTAG('H', 'E', 'V', 'C'), AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_HEVC  },
     { MKTAG('K', 'L', 'V', 'A'), AVMEDIA_TYPE_DATA,  AV_CODEC_ID_SMPTE_KLV },
+    { MKTAG('I', 'D', '3', ' '), AVMEDIA_TYPE_DATA,  AV_CODEC_ID_TIMED_ID3 },
     { MKTAG('V', 'C', '-', '1'), AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_VC1   },
     { MKTAG('O', 'p', 'u', 's'), AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_OPUS  },
     { 0 },
@@ -1802,8 +1807,11 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
     case 0x05: /* registration descriptor */
         st->codecpar->codec_tag = bytestream_get_le32(pp);
         av_log(fc, AV_LOG_TRACE, "reg_desc=%.4s\n", (char *)&st->codecpar->codec_tag);
-        if (st->codecpar->codec_id == AV_CODEC_ID_NONE || st->request_probe > 0)
+        if (st->codecpar->codec_id == AV_CODEC_ID_NONE || st->request_probe > 0) {
             mpegts_find_stream_type(st, st->codecpar->codec_tag, REGD_types);
+            if (st->codecpar->codec_tag == MKTAG('B', 'S', 'S', 'D'))
+                st->request_probe = 50;
+        }
         break;
     case 0x52: /* stream identifier descriptor */
         st->stream_identifier = 1 + get8(pp, desc_end);
@@ -2354,11 +2362,20 @@ static void reanalyze(MpegTSContext *ts) {
 
 /* XXX: try to find a better synchro over several packets (use
  * get_packet_size() ?) */
-static int mpegts_resync(AVFormatContext *s)
+static int mpegts_resync(AVFormatContext *s, int seekback, const uint8_t *current_packet)
 {
     MpegTSContext *ts = s->priv_data;
     AVIOContext *pb = s->pb;
     int c, i;
+    uint64_t pos = avio_tell(pb);
+
+    avio_seek(pb, -FFMIN(seekback, pos), SEEK_CUR);
+
+    //Special case for files like 01c56b0dc1.ts
+    if (current_packet[0] == 0x80 && current_packet[12] == 0x47) {
+        avio_seek(pb, 12, SEEK_CUR);
+        return 0;
+    }
 
     for (i = 0; i < ts->resync_size; i++) {
         c = avio_r8(pb);
@@ -2390,10 +2407,8 @@ static int read_packet(AVFormatContext *s, uint8_t *buf, int raw_packet_size,
         /* check packet sync byte */
         if ((*data)[0] != 0x47) {
             /* find a new packet start */
-            uint64_t pos = avio_tell(pb);
-            avio_seek(pb, -FFMIN(raw_packet_size, pos), SEEK_CUR);
 
-            if (mpegts_resync(s) < 0)
+            if (mpegts_resync(s, raw_packet_size, *data) < 0)
                 return AVERROR(EAGAIN);
             else
                 continue;
@@ -2475,7 +2490,7 @@ static int mpegts_probe(AVProbeData *p)
 #define CHECK_COUNT 10
 #define CHECK_BLOCK 100
 
-    if (check_count < CHECK_COUNT)
+    if (!check_count)
         return 0;
 
     for (i = 0; i<check_count; i+=CHECK_BLOCK) {
@@ -2493,10 +2508,15 @@ static int mpegts_probe(AVProbeData *p)
 
     ff_dlog(0, "TS score: %d %d\n", sumscore, maxscore);
 
-    if      (sumscore > 6) return AVPROBE_SCORE_MAX   + sumscore - CHECK_COUNT;
-    else if (maxscore > 6) return AVPROBE_SCORE_MAX/2 + sumscore - CHECK_COUNT;
-    else
+    if        (check_count >= CHECK_COUNT && sumscore > 6) {
+        return AVPROBE_SCORE_MAX   + sumscore - CHECK_COUNT;
+    } else if (check_count >= CHECK_COUNT && maxscore > 6) {
+        return AVPROBE_SCORE_MAX/2 + sumscore - CHECK_COUNT;
+    } else if (sumscore > 6) {
+        return 2;
+    } else {
         return 0;
+    }
 }
 
 /* return the 90kHz PCR and the extension for the 27MHz PCR. return
@@ -2748,8 +2768,7 @@ static av_unused int64_t mpegts_get_pcr(AVFormatContext *s, int stream_index,
         if (avio_read(s->pb, buf, TS_PACKET_SIZE) != TS_PACKET_SIZE)
             return AV_NOPTS_VALUE;
         if (buf[0] != 0x47) {
-            avio_seek(s->pb, -TS_PACKET_SIZE, SEEK_CUR);
-            if (mpegts_resync(s) < 0)
+            if (mpegts_resync(s, TS_PACKET_SIZE, buf) < 0)
                 return AV_NOPTS_VALUE;
             pos = avio_tell(s->pb);
             continue;

@@ -108,6 +108,7 @@ void avfilter_register_all(void)
     REGISTER_FILTER(HIGHPASS,       highpass,       af);
     REGISTER_FILTER(JOIN,           join,           af);
     REGISTER_FILTER(LADSPA,         ladspa,         af);
+    REGISTER_FILTER(LOUDNORM,       loudnorm,       af);
     REGISTER_FILTER(LOWPASS,        lowpass,        af);
     REGISTER_FILTER(PAN,            pan,            af);
     REGISTER_FILTER(REPLAYGAIN,     replaygain,     af);
@@ -248,6 +249,7 @@ void avfilter_register_all(void)
     REGISTER_FILTER(PULLUP,         pullup,         vf);
     REGISTER_FILTER(QP,             qp,             vf);
     REGISTER_FILTER(RANDOM,         random,         vf);
+    REGISTER_FILTER(READVITC,       readvitc,       vf);
     REGISTER_FILTER(REALTIME,       realtime,       vf);
     REGISTER_FILTER(REMAP,          remap,          vf);
     REGISTER_FILTER(REMOVEGRAIN,    removegrain,    vf);
@@ -258,6 +260,8 @@ void avfilter_register_all(void)
     REGISTER_FILTER(SAB,            sab,            vf);
     REGISTER_FILTER(SCALE,          scale,          vf);
     REGISTER_FILTER(SCALE2REF,      scale2ref,      vf);
+    REGISTER_FILTER(SCALE_NPP,      scale_npp,      vf);
+    REGISTER_FILTER(SCALE_VAAPI,    scale_vaapi,    vf);
     REGISTER_FILTER(SELECT,         select,         vf);
     REGISTER_FILTER(SELECTIVECOLOR, selectivecolor, vf);
     REGISTER_FILTER(SENDCMD,        sendcmd,        vf);

@@ -161,8 +161,8 @@
  * av_read_frame() on it. Each call, if successful, will return an AVPacket
  * containing encoded data for one AVStream, identified by
  * AVPacket.stream_index. This packet may be passed straight into the libavcodec
- * decoding functions avcodec_decode_video2(), avcodec_decode_audio4() or
- * avcodec_decode_subtitle2() if the caller wishes to decode the data.
+ * decoding functions avcodec_send_packet() or avcodec_decode_subtitle2() if the
+ * caller wishes to decode the data.
  *
  * AVPacket.pts, AVPacket.dts and AVPacket.duration timing information will be
  * set if known. They may also be unset (i.e. AV_NOPTS_VALUE for
@@ -527,7 +527,7 @@ typedef struct AVOutputFormat {
      * can use flags: AVFMT_NOFILE, AVFMT_NEEDNUMBER,
      * AVFMT_GLOBALHEADER, AVFMT_NOTIMESTAMPS, AVFMT_VARIABLE_FPS,
      * AVFMT_NODIMENSIONS, AVFMT_NOSTREAMS, AVFMT_ALLOW_FLUSH,
-     * AVFMT_TS_NONSTRICT
+     * AVFMT_TS_NONSTRICT, AVFMT_TS_NEGATIVE
      */
     int flags;
 
@@ -1305,6 +1305,12 @@ typedef struct AVFormatInternal AVFormatInternal;
  * version bump.
  * sizeof(AVFormatContext) must not be used outside libav*, use
  * avformat_alloc_context() to create an AVFormatContext.
+ *
+ * Fields can be accessed through AVOptions (av_opt*),
+ * the name string used matches the associated command line parameter name and
+ * can be found in libavformat/options_table.h.
+ * The AVOption/command line parameter names differ in some cases from the C
+ * structure field names for historic reasons or brevity.
  */
 typedef struct AVFormatContext {
     /**
